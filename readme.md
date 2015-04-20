@@ -1,4 +1,4 @@
-tracer2
+cltracer
 =======
 
-OpenCL powered and distributed raytracer
+OpenCL powered ray tracer
