@@ -5,6 +5,6 @@ gl/shader.vert
 gl/shader.frag
 sources/gl.h
 cl/ray_tracer_kernel.cl
-sources/view.h
-sources/view.c
+sources/ray.h
+sources/ray.c
 cl/mandelbrot_kernel.cl

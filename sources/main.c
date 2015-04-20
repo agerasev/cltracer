@@ -13,7 +13,10 @@
 #include <stdio.h>
 
 #include "gl.h"
-#include "view.h"
+#include "ray.h"
+
+// #define SAVE_IMAGE
+// #define PRINT_FPS
 
 static int width = 800;
 static int height = 600;
@@ -67,13 +70,19 @@ int main(int argc, char *argv[])
 	}
 	
 	initGL();
-	initView(width,height);
+	rayInit(width,height);
+	
+	rayRender();
 	
 	int done = 0;
 	SDL_Event event;
 	int ws = 0, as = 0, ss = 0, ds = 0, spcs = 0, ctls = 0;
 	int mmode = 1;
 	int tick = SDL_GetTicks(), frame = 0;
+	
+	SDL_Surface *image = SDL_CreateRGBSurface(SDL_SWSURFACE,width,height,24,0x0000ff,0x00ff00,0xff0000,0x000000);
+	int counter = 0;
+	
 	SDL_SetRelativeMouseMode(mmode);
 	while(!done)
 	{
@@ -132,9 +141,12 @@ int main(int argc, char *argv[])
 					ctls = 0;
 					break;
 				case SDLK_ESCAPE:
+					/*
 					mmode = !mmode;
 					SDL_SetRelativeMouseMode(mmode);
 					break;
+					*/
+					done = 1;
 				}
 			}
 			else
@@ -181,16 +193,31 @@ int main(int argc, char *argv[])
 		pos[0] += spd*((ss - ws)*sin(yaw) + (ds - as)*cos(yaw))*cos(pitch);
 		pos[1] += spd*((ws - ss)*cos(yaw) + (ds - as)*sin(yaw))*cos(pitch);
 		pos[2] += spd*(spcs - ctls) + spd*(ws - ss)*sin(pitch);
-		setFov(fov);
+		raySetFov(fov);
 		const float ang[2] = {yaw,pitch}; 
-		setCamOri(ang);
-		setCamPos(pos);
-		render();
-		drawGLTexture(getTexture());
+		raySetOri(ang);
+		raySetPos(pos);
+		rayRender();
+		
+		GLuint texture = rayGetGLTexture();
+		drawGLTexture(texture);
 		
 		glFlush();
+		
+#ifdef SAVE_IMAGE
+		char num[21];
+		sprintf(num,"video/frame%05d.bmp", counter);
+		num[20] = '\0';
+		++counter;
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glReadPixels(0,0,width,height,GL_RGB,GL_UNSIGNED_BYTE,image->pixels);
+		SDL_SaveBMP(image,num);
+		glBindTexture(GL_TEXTURE_2D, 0);
+#endif // SAVE_IMAGE
+		
 		SDL_GL_SwapWindow(sdl_window);
 		
+#ifdef PRINT_FPS
 		++frame;
 		int ntick = SDL_GetTicks();
 		if(ntick - tick > 1000)
@@ -199,11 +226,14 @@ int main(int argc, char *argv[])
 			fprintf(stdout,"fps: %d\n",frame);
 			frame = 0;
 		}
+#endif // PRINT_FPS
 	}
 	
 	// Clean up
-	disposeView();
+	rayDispose();
 	disposeGL();
+	
+	SDL_FreeSurface(image);
 	
 	SDL_GL_DeleteContext(sdl_glcontext);
 	SDL_DestroyWindow(sdl_window);
