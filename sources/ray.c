@@ -60,7 +60,9 @@ static void __printKernelCompilationInfo(cl_program program, cl_device_id device
 #define HIT_FSIZE 12
 #define HIT_ISIZE 3
 
-#define MAX_CHILD_RAYS 2
+#define HIT_INFO_SIZE 2
+
+#define MAX_CHILD_RAYS 1
 
 static cl_platform_id platform_id = 0;
 static cl_device_id device_id = 0;
@@ -76,9 +78,11 @@ static cl_mem cam_fdata;
 static cl_mem ray_fdata, ray_idata;
 static cl_mem hit_fdata, hit_idata;
 static cl_mem color_buffer;
+static cl_mem hit_info, cl_ray_count;
+static cl_mem pitch, work_size;
 
 static cl_program program;
-static cl_kernel start, intersect, produce, draw;
+static cl_kernel start, intersect, produce, draw, compact;
 
 static int width, height;
 
@@ -183,13 +187,18 @@ int rayInit(int w, int h)
 	
 	cl_image = __get_image();
 	
-	size_t buf_size = width*height;
-	ray_fdata = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(float)*RAY_FSIZE*buf_size,NULL,&err);
-	ray_idata = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(int)*RAY_ISIZE*buf_size,NULL,&err);
-	hit_fdata = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(float)*HIT_FSIZE*buf_size,NULL,&err);
-	hit_idata = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(int)*HIT_ISIZE*buf_size,NULL,&err);
+	size_t screen_size = width*height;
+	size_t buffer_size = screen_size*MAX_CHILD_RAYS;
+	ray_fdata = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(float)*RAY_FSIZE*buffer_size,NULL,&err);
+	ray_idata = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(int)*RAY_ISIZE*buffer_size,NULL,&err);
+	hit_fdata = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(float)*HIT_FSIZE*buffer_size,NULL,&err);
+	hit_idata = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(int)*HIT_ISIZE*buffer_size,NULL,&err);
 	cam_fdata = clCreateBuffer(context,CL_MEM_READ_ONLY,sizeof(float)*CAM_FSIZE,NULL,&err);
-	color_buffer = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int)*3*buf_size,NULL,&err);
+	color_buffer = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int)*3*screen_size,NULL,&err);
+	hit_info = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int)*HIT_INFO_SIZE*buffer_size,NULL,&err);
+	cl_ray_count = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int),NULL,&err);
+	pitch = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int),NULL,&err);
+	work_size = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int),NULL,&err);
 	
 	// Create a program from the kernel source
 	size_t source_size;
@@ -208,14 +217,15 @@ int rayInit(int w, int h)
 	start = clCreateKernel(program, "start", &err);
 	intersect = clCreateKernel(program, "intersect", &err);
 	produce = clCreateKernel(program, "produce", &err);
-	draw  = clCreateKernel(program, "draw" , &err);
+	draw = clCreateKernel(program, "draw" , &err);
+	compact = clCreateKernel(program, "compact" , &err);
 		
 	return 0;
 }
 
 void rayDispose()
 {
-	cl_uint err;
+	// cl_uint err;
 	clFlush(command_queue);
 	clFinish(command_queue);
 	
@@ -223,6 +233,7 @@ void rayDispose()
 	clReleaseKernel(intersect);
 	clReleaseKernel(produce);
 	clReleaseKernel(draw);
+	clReleaseKernel(compact);
 	
 	clReleaseProgram(program);
 	
@@ -232,6 +243,10 @@ void rayDispose()
 	clReleaseMemObject(hit_fdata);
 	clReleaseMemObject(hit_idata);
 	clReleaseMemObject(color_buffer);
+	clReleaseMemObject(hit_info);
+	clReleaseMemObject(cl_ray_count);
+	clReleaseMemObject(pitch);
+	clReleaseMemObject(work_size);
 	clReleaseMemObject(cl_image);
 	
 	clReleaseCommandQueue(command_queue);
@@ -297,13 +312,11 @@ int rayRender()
 	  cam_fov
 	};
 	clEnqueueWriteBuffer(command_queue,cam_fdata,CL_TRUE,0,sizeof(float)*CAM_FSIZE, cam_array, 0, NULL, NULL);
-	
-	// clFlush(command_queue);
+	clFlush(command_queue);
 	
 	
 	size_t global_work_size[2] = {width,height};
 	size_t local_work_size[2] = {8,8};
-	
 	
 	// start
 	clSetKernelArg(start, 0, sizeof(cl_mem), (void*)&ray_fdata);
@@ -314,30 +327,50 @@ int rayRender()
 	
 	// clFlush(command_queue);
 	
+	unsigned int ray_count = width*height;
 	
-	size_t global_size = width*height;
-	size_t local_size = 64;
-	
-	int i, depth = 4;
+	int i, depth = 8;
 	for(i = 0; i < depth; ++i)
 	{
+		size_t local_size = 64;
+		size_t global_size = (int)(local_size*(floor((float)ray_count/local_size) + 1));
+		size_t one = 1;
+		
+		clEnqueueWriteBuffer(command_queue,work_size,CL_TRUE,0,sizeof(unsigned int),&ray_count,0,NULL,NULL);
+		clFlush(command_queue);
+		
 		// intersect
 		clSetKernelArg(intersect, 0, sizeof(cl_mem), (void*)&ray_fdata);
 		clSetKernelArg(intersect, 1, sizeof(cl_mem), (void*)&ray_idata);
 		clSetKernelArg(intersect, 2, sizeof(cl_mem), (void*)&hit_fdata);
 		clSetKernelArg(intersect, 3, sizeof(cl_mem), (void*)&hit_idata);
+		clSetKernelArg(intersect, 4, sizeof(cl_mem), (void*)&hit_info);
+		clSetKernelArg(intersect, 5, sizeof(cl_mem), (void*)&work_size);
 		
 		clEnqueueNDRangeKernel(command_queue,intersect,1,NULL,&global_size,&local_size,0,NULL,NULL);
-		
 		// clFlush(command_queue);
 		
+		clEnqueueWriteBuffer(command_queue,cl_ray_count,CL_TRUE,0,sizeof(unsigned int),&ray_count,0,NULL,NULL);
+		clFlush(command_queue);
+		
+		// compact
+		clSetKernelArg(compact, 0, sizeof(cl_mem), (void*)&hit_info);
+		clSetKernelArg(compact, 1, sizeof(cl_mem), (void*)&cl_ray_count);
+		
+		clEnqueueNDRangeKernel(command_queue,compact,1,NULL,&one,&one,0,NULL,NULL);
+		
+		clEnqueueReadBuffer(command_queue,cl_ray_count,CL_TRUE,0,sizeof(unsigned int),&ray_count,0,NULL,NULL);
+		clFlush(command_queue);
 		
 		// produce
 		clSetKernelArg(produce, 0, sizeof(cl_mem), (void*)&hit_fdata);
 		clSetKernelArg(produce, 1, sizeof(cl_mem), (void*)&hit_idata);
 		clSetKernelArg(produce, 2, sizeof(cl_mem), (void*)&ray_fdata);
 		clSetKernelArg(produce, 3, sizeof(cl_mem), (void*)&ray_idata);
-		clSetKernelArg(produce, 4, sizeof(cl_mem), (void*)&color_buffer);
+		clSetKernelArg(produce, 4, sizeof(cl_mem), (void*)&hit_info);
+		clSetKernelArg(produce, 5, sizeof(cl_mem), (void*)&color_buffer);
+		clSetKernelArg(produce, 6, sizeof(cl_mem), (void*)&pitch);
+		clSetKernelArg(produce, 7, sizeof(cl_mem), (void*)&work_size);
 		
 		clEnqueueNDRangeKernel(command_queue,produce,1,NULL,&global_size,&local_size,0,NULL,NULL);
 		

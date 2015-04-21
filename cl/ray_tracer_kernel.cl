@@ -65,6 +65,8 @@ void ray_store(Ray *ray, int offset, __global float *fdata, __global int *idata)
 #define HIT_FSIZE 12
 #define HIT_ISIZE 3
 
+#define HIT_INFO_SIZE 2
+
 typedef struct
 {
 	float3 pos;
@@ -136,11 +138,17 @@ __kernel void start(__global float *ray_fdata, __global int *ray_idata, __consta
 
 __kernel void intersect(
 	__global const float *ray_fdata, __global const int *ray_idata,
-	__global float *hit_fdata, __global int *hit_idata
+	__global float *hit_fdata, __global int *hit_idata, 
+	__global int *hit_info, __global const uint *work_size
 )
 {
 	const int size = get_global_size(0);
 	const int pos = get_global_id(0);
+	
+	if(pos >= *work_size)
+	{
+		return;
+	}
 	
 	Ray ray = ray_load(pos,ray_fdata,ray_idata);
 	
@@ -178,17 +186,24 @@ __kernel void intersect(
 	hit.origin = ray.origin;
 	hit.object = hit_obj;
 	
+	hit_info[HIT_INFO_SIZE*pos] = (hit_obj > 0);
+	
 	hit_store(&hit,pos,hit_fdata,hit_idata);
 }
 
 __kernel void produce(
 	__global const float *hit_fdata, __global const int *hit_idata,
-	__global float *ray_fdata, __global int *ray_idata, 
-	__global uint *color_buffer
+	__global float *ray_fdata, __global int *ray_idata, __global const uint *hit_info,
+	__global uint *color_buffer, __global const uint *pitch, __global const uint *work_size
 )
 {
 	const int size = get_global_size(0);
 	const int pos = get_global_id(0);
+	
+	if(pos >= *work_size)
+	{
+		return;
+	}
 	
 	Hit hit = hit_load(pos,hit_fdata,hit_idata);
 	float3 color = hit.color;
@@ -202,82 +217,33 @@ __kernel void produce(
 		color *= (float3)(0.0f,0.0f,0.0f);
 	}
 	
-	Ray ray;
-	ray.pos = hit.pos + hit.norm*DELTA;
-	ray.dir = hit.dir - 2.0f*hit.norm*dot(hit.dir,hit.norm);
-	ray.color = hit.color;
-	ray.origin = hit.origin;
-	switch(hit.object)
+	if(hit_info[HIT_INFO_SIZE*pos + 0] > 0)
 	{
-	case 1:
-		ray.color *= (float3)(0.4f,0.4f,1.0f);
-		break;
-	case 2:
-		ray.color *= (float3)(1.0f,0.4f,0.4f);
-		break;
-	case 3:
-		ray.color *= (float3)(0.4f,1.0f,0.4f);
-		break;
-	default:
-		ray.color *= (float3)(0.0f,0.0f,0.0f);
-		break;
-	}
-	
-	ray_store(&ray,pos,ray_fdata,ray_idata);
-	
-	// replace with atomic_add for float in later version
-	atomic_add(color_buffer + 3*pos + 0, (uint)(0x10000*color.x));
-	atomic_add(color_buffer + 3*pos + 1, (uint)(0x10000*color.y));
-	atomic_add(color_buffer + 3*pos + 2, (uint)(0x10000*color.z));
-}
-
-/*
-__kernel void trace(__global const float *ray_data, __global const int *ray_origin, volatile __global uint *color_buffer)
-{
-	const int size = get_global_size(0);
-	const int pos = get_global_id(0);
-	
-	Ray ray = ray_load(pos,ray_data,ray_origin);
-	
-	// Collide with uniform sphere
-	const float3 sph_pos[3] = {(float3)(0.0f,4.0f,0.0f),(float3)(3.0f,6.0f,0.0f),(float3)(0.0f,4.0f,-4.0f)};
-	const float sph_rad[3] = {1.0f,1.6f,2.4f};
-	int i, c = 0;
-	float dist;
-	for(i = 0; i < 3; ++i)
-	{
-		float d = dot(sph_pos[i] - ray.pos,ray.dir);
-		if(d > 0.0f && length(ray.pos + d*ray.dir - sph_pos[i]) < sph_rad[i])
+		Ray ray;
+		ray.pos = hit.pos + hit.norm*DELTA;
+		ray.dir = hit.dir - 2.0f*hit.norm*dot(hit.dir,hit.norm);
+		ray.color = hit.color;
+		ray.origin = hit.origin;
+		switch(hit.object)
 		{
-			if(c == 0 || d < dist)
-			{
-				dist = d;
-				c = i + 1;
-			}
+		case 1:
+			ray.color *= (float3)(0.4f,0.4f,1.0f);
+			break;
+		case 2:
+			ray.color *= (float3)(1.0f,0.4f,0.4f);
+			break;
+		case 3:
+			ray.color *= (float3)(0.4f,1.0f,0.4f);
+			break;
 		}
-	}
-	switch(c)
-	{
-	case 1:
-		ray.color = (float3)(0.0f,0.0f,1.0f);
-		break;
-	case 2:
-		ray.color = (float3)(1.0f,0.0f,0.0f);
-		break;
-	case 3:
-		ray.color = (float3)(0.0f,1.0f,0.0f);
-		break;
-	default:
-		ray.color = get_sky_color(ray.dir);
-		break;
+		ray_store(&ray,hit_info[HIT_INFO_SIZE*pos + 1],ray_fdata,ray_idata);
 	}
 	
 	// replace with atomic_add for float in later version
-	atomic_add(color_buffer + 3*pos + 0, (uint)(0x1000*ray.color.x));
-	atomic_add(color_buffer + 3*pos + 1, (uint)(0x1000*ray.color.y));
-	atomic_add(color_buffer + 3*pos + 2, (uint)(0x1000*ray.color.z));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*800) + 0, (uint)(0x10000*color.x));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*800) + 1, (uint)(0x10000*color.y));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*800) + 2, (uint)(0x10000*color.z));
 }
-*/
 
 __kernel void draw(__global uint *color_buffer, __write_only image2d_t image)
 {
@@ -290,4 +256,17 @@ __kernel void draw(__global uint *color_buffer, __write_only image2d_t image)
 	vstore3((uint3)(0,0,0),pos.x + size.x*pos.y,color_buffer);
 	
 	write_imagef(image,pos,(float4)(color,1.0f));
+}
+
+__kernel void compact(__global int *hit_info, __global uint *ray_count)
+{
+	const uint size = *ray_count;
+	uint sum = 0;
+	uint i;
+	for(i = 0; i < size; ++i)
+	{
+		hit_info[HIT_INFO_SIZE*i + 1] = sum;
+		sum += hit_info[HIT_INFO_SIZE*i + 0];
+	}
+	*ray_count = sum;
 }

@@ -16,7 +16,7 @@
 #include "ray.h"
 
 // #define SAVE_IMAGE
-// #define PRINT_FPS
+#define PRINT_FPS
 
 static int width = 800;
 static int height = 600;
