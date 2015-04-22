@@ -70,7 +70,11 @@ int main(int argc, char *argv[])
 	}
 	
 	initGL();
-	rayInit(width,height);
+	if(rayInit(width,height))
+	{
+		disposeGL();
+		return -1;
+	}
 	
 	rayRender();
 	

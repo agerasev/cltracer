@@ -1,5 +1,3 @@
-#define DELTA 1e-8
-
 typedef struct
 {
 	float3 pos;
@@ -17,7 +15,6 @@ Camera camera_load(__constant const float *data)
 	cam.fov = data[12];
 	return cam;
 }
-
 #define RAY_FSIZE 9
 #define RAY_ISIZE 2
 
@@ -61,11 +58,8 @@ void ray_store(Ray *ray, int offset, __global float *fdata, __global int *idata)
 	vstore3(ray->color,2,ray_fdata);
 	vstore2(ray->origin,0,ray_idata);
 }
-
 #define HIT_FSIZE 12
 #define HIT_ISIZE 3
-
-#define HIT_INFO_SIZE 2
 
 typedef struct
 {
@@ -113,12 +107,48 @@ void hit_store(Hit *hit, int offset, __global float *fdata, __global int *idata)
 	vstore2(hit->origin,0,hit_idata);
 	hit_idata[2] = hit->object;
 }
+#define HIT_INFO_SIZE 8
 
-float3 get_sky_color(float3 dir)
+typedef struct
 {
-	return (float3)(dir.z,dir.z,dir.z)*0.5f + (float3)(0.5f,0.5f,0.5f);
+	uint size;
+	uint offset;
+	uint2 pre_size;
+	uint2 pre_offset;
+	uint2 pre_offset_tmp;
+}
+HitInfo;
+
+HitInfo hit_info_load(int offset, __global const uint *data)
+{
+	HitInfo info;
+	__global const uint *info_data = data + HIT_INFO_SIZE*offset;
+	info.size = info_data[0];
+	info.offset = info_data[1];
+	info.pre_size = vload2(1,info_data);
+	info.pre_offset = vload2(2,info_data);
+	info.pre_offset_tmp = vload2(3,info_data);
+	return info;
 }
 
+void hit_info_store(HitInfo *info, int offset, __global uint *data)
+{
+	__global uint *info_data = data + HIT_INFO_SIZE*offset;
+	info_data[0] = info->size;
+	info_data[1] = info->offset;
+	vstore2(info->pre_size,1,info_data);
+	vstore2(info->pre_offset,2,info_data);
+	vstore2(info->pre_offset_tmp,3,info_data);
+}
+uint random_next(uint *seed)
+{
+	return (*seed = 1103515245**seed + 12345);
+}
+
+float random_unif(uint seed)
+{
+	return (float)seed/(float)0xffffffff;
+}
 __kernel void start(__global float *ray_fdata, __global int *ray_idata, __constant float *cam_fdata)
 {
 	const int2 size = (int2)(get_global_size(0), get_global_size(1));
@@ -135,11 +165,10 @@ __kernel void start(__global float *ray_fdata, __global int *ray_idata, __consta
 	
 	ray_store(&ray, size.x*pos.y + pos.x, ray_fdata, ray_idata);
 }
-
 __kernel void intersect(
 	__global const float *ray_fdata, __global const int *ray_idata,
 	__global float *hit_fdata, __global int *hit_idata, 
-	__global int *hit_info, __global const uint *work_size
+	__global uint *hit_info, __global const uint *work_size
 )
 {
 	const int size = get_global_size(0);
@@ -186,15 +215,49 @@ __kernel void intersect(
 	hit.origin = ray.origin;
 	hit.object = hit_obj;
 	
-	hit_info[HIT_INFO_SIZE*pos] = (hit_obj > 0);
+	HitInfo info;
+	info.size = 2*(hit_obj > 0);
+	info.offset = 2*(hit_obj > 0);
+	hit_info_store(&info,pos,hit_info);
 	
 	hit_store(&hit,pos,hit_fdata,hit_idata);
+}
+#define DELTA 1e-8f
+
+float3 get_sky_color(float3 dir)
+{
+	return (float3)(dir.z,dir.z,dir.z)*0.5f + (float3)(0.5f,0.5f,0.5f);
+}
+
+float3 reflect(float3 dir, float3 norm)
+{
+	return dir - 2.0f*norm*dot(dir,norm);
+}
+
+float3 diffuse(float3 dir, float3 norm, uint *seed)
+{
+	float3 nx, ny;
+	if(dot((float3)(0.0f,0.0f,1.0f),norm) < 0.6 && dot((float3)(0.0f,0.0f,1.0f),norm) > -0.6)
+	{
+		nx = (float3)(0.0f,0.0f,1.0f);
+	}
+	else
+	{
+		nx = (float3)(1.0f,0.0f,0.0f);
+	}
+	ny = normalize(cross(nx,norm));
+	nx = cross(ny,norm);
+
+	float phi = 2.0f*M_PI_F*random_unif(random_next(seed));
+	float theta = acos(1.0f - 2.0f*random_unif(random_next(seed)))/2.0f;
+	return nx*cos(phi)*sin(theta) + ny*sin(phi)*sin(theta) + norm*cos(theta);
 }
 
 __kernel void produce(
 	__global const float *hit_fdata, __global const int *hit_idata,
 	__global float *ray_fdata, __global int *ray_idata, __global const uint *hit_info,
-	__global uint *color_buffer, __global const uint *pitch, __global const uint *work_size
+	__global uint *color_buffer, __global const uint *pitch, __global const uint *work_size,
+	__global uint *random
 )
 {
 	const int size = get_global_size(0);
@@ -219,9 +282,13 @@ __kernel void produce(
 	
 	if(hit_info[HIT_INFO_SIZE*pos + 0] > 0)
 	{
+		uint seed = random[pos];
+		
 		Ray ray;
 		ray.pos = hit.pos + hit.norm*DELTA;
-		ray.dir = hit.dir - 2.0f*hit.norm*dot(hit.dir,hit.norm);
+		
+		ray.dir = diffuse(hit.dir,hit.norm,&seed); //reflect(hit.dir,hit.norm);
+		
 		ray.color = hit.color;
 		ray.origin = hit.origin;
 		switch(hit.object)
@@ -236,15 +303,24 @@ __kernel void produce(
 			ray.color *= (float3)(0.4f,1.0f,0.4f);
 			break;
 		}
-		ray_store(&ray,hit_info[HIT_INFO_SIZE*pos + 1],ray_fdata,ray_idata);
+		ray.color /= 2.0f;
+		
+		HitInfo info = hit_info_load(pos,hit_info);
+		
+		ray.dir = diffuse(hit.dir,hit.norm,&seed); //reflect(hit.dir,hit.norm);
+		ray_store(&ray,info.offset - info.size,ray_fdata,ray_idata);
+		
+		ray.dir = diffuse(hit.dir,hit.norm,&seed); //reflect(hit.dir,hit.norm);
+		ray_store(&ray,info.offset - info.size + 1,ray_fdata,ray_idata);
+		
+		random[pos] = seed;
 	}
 	
 	// replace with atomic_add for float in later version
-	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*800) + 0, (uint)(0x10000*color.x));
-	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*800) + 1, (uint)(0x10000*color.y));
-	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*800) + 2, (uint)(0x10000*color.z));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y**pitch) + 0, (uint)(0x10000*color.x));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y**pitch) + 1, (uint)(0x10000*color.y));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y**pitch) + 2, (uint)(0x10000*color.z));
 }
-
 __kernel void draw(__global uint *color_buffer, __write_only image2d_t image)
 {
 	const int2 size = (int2)(get_global_size(0), get_global_size(1));
@@ -257,16 +333,49 @@ __kernel void draw(__global uint *color_buffer, __write_only image2d_t image)
 	
 	write_imagef(image,pos,(float4)(color,1.0f));
 }
-
-__kernel void compact(__global int *hit_info, __global uint *ray_count)
+__kernel void compact(__global uint *hit_info, __global uint *ray_count, __global const uint *deviation, __global const uint *work_size)
 {
-	const uint size = *ray_count;
-	uint sum = 0;
-	uint i;
-	for(i = 0; i < size; ++i)
+	const int size = *work_size;//get_global_size(0);
+	const int pos = get_global_id(0);
+	const int dev = *deviation;
+	const int edev = (1<<dev);
+	
+	if(pos >= size)
 	{
-		hit_info[HIT_INFO_SIZE*i + 1] = sum;
-		sum += hit_info[HIT_INFO_SIZE*i + 0];
+		return;
 	}
-	*ray_count = sum;
+	
+	uint2 sum;
+	if(pos >= edev)
+	{
+		sum.x = hit_info[HIT_INFO_SIZE*(pos-edev) + (dev%2) + 1] + hit_info[HIT_INFO_SIZE*pos + (dev%2) + 1];
+		//sum.y = hit_info[HIT_INFO_SIZE*(pos-edev) + 2*(dev%2) + 5] + hit_info[HIT_INFO_SIZE*pos + 2*(dev%2) + 5];
+	}
+	else
+	{
+		sum.x = hit_info[HIT_INFO_SIZE*pos + (dev%2) + 1];
+		//sum.y = hit_info[HIT_INFO_SIZE*pos + (dev%2) + 2];
+	}
+	
+	hit_info[HIT_INFO_SIZE*pos + ((dev+1)%2) + 1] = sum.x;
+	//hit_info[HIT_INFO_SIZE*pos + 2*((dev+1)%2) + 5] = sum.y;
+	
+	if(pos == size - 1)
+	{
+		ray_count[0] = sum.x;
+		//ray_count[1] = sum.y;
+	}
+}
+__kernel void expand(__global uint *hit_info, __global const uint *diffuse_factor, __global const uint *work_size)
+{
+	const uint size = *work_size;//get_global_size(0);
+	const uint pos = get_global_id(0);
+	const uint factor = *diffuse_factor;
+	if(pos >= size)
+	{
+		return;
+	}
+	HitInfo info = hit_info_load(pos,hit_info);
+	info.size = info.pre_size.x + info.pre_size.y*factor;
+	info.offset = info.pre_offset.x + info.pre_offset.y*factor - info.size;
 }

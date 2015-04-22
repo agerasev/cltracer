@@ -60,9 +60,9 @@ static void __printKernelCompilationInfo(cl_program program, cl_device_id device
 #define HIT_FSIZE 12
 #define HIT_ISIZE 3
 
-#define HIT_INFO_SIZE 2
+#define HIT_INFO_SIZE 8
 
-#define MAX_CHILD_RAYS 1
+#define MAX_CHILD_RAYS 2
 
 static cl_platform_id platform_id = 0;
 static cl_device_id device_id = 0;
@@ -79,7 +79,8 @@ static cl_mem ray_fdata, ray_idata;
 static cl_mem hit_fdata, hit_idata;
 static cl_mem color_buffer;
 static cl_mem hit_info, cl_ray_count;
-static cl_mem pitch, work_size;
+static cl_mem pitch, work_size, deviation;
+static cl_mem cl_random;
 
 static cl_program program;
 static cl_kernel start, intersect, produce, draw, compact;
@@ -175,6 +176,7 @@ static cl_mem __get_image()
 int rayInit(int w, int h)
 {
 	cl_int err;
+	int i;
 	
 	width = w;
 	height = h;
@@ -196,29 +198,49 @@ int rayInit(int w, int h)
 	cam_fdata = clCreateBuffer(context,CL_MEM_READ_ONLY,sizeof(float)*CAM_FSIZE,NULL,&err);
 	color_buffer = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int)*3*screen_size,NULL,&err);
 	hit_info = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int)*HIT_INFO_SIZE*buffer_size,NULL,&err);
-	cl_ray_count = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int),NULL,&err);
+	cl_ray_count = clCreateBuffer(context,CL_MEM_READ_WRITE,2*sizeof(unsigned int),NULL,&err);
 	pitch = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int),NULL,&err);
 	work_size = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int),NULL,&err);
+	deviation = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int),NULL,&err);
+	cl_random = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int)*buffer_size,NULL,&err);
+	
+	unsigned seed = 0;
+	unsigned *random_buffer = malloc(sizeof(unsigned)*buffer_size);
+	for(i = 0; i < buffer_size; ++i)
+	{
+		random_buffer[i] = (seed = 3942082377*seed + 1234567);
+	}
+	clEnqueueWriteBuffer(command_queue,cl_random,CL_TRUE,0,sizeof(unsigned int)*buffer_size,random_buffer,0,NULL,NULL);
+	clFlush(command_queue);
+	free(random_buffer);
 	
 	// Create a program from the kernel source
 	size_t source_size;
-	char *source = __loadSource("cl/ray_tracer_kernel.cl",&source_size);
+	char *source = __loadSource("cl/kernel.cl",&source_size);;
 	program = clCreateProgramWithSource(context, 1, (const char **)&source, (const size_t *)&source_size, &err);
+	if(err != CL_SUCCESS) {fprintf(stderr,"clCreateProgramWithSource: failed\n"); return -3;}
 	__freeSource(source);
+	
 	
 	// Build the program
 	err = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
 	if(err != CL_SUCCESS)
 	{
 		__printKernelCompilationInfo(program,device_id);
+		return -1;
 	}
 	
 	// Create the OpenCL kernel
 	start = clCreateKernel(program, "start", &err);
+	if(err != CL_SUCCESS) {fprintf(stderr,"clCreateKernel: 'start' %d\n",err);return -2;}
 	intersect = clCreateKernel(program, "intersect", &err);
+	if(err != CL_SUCCESS) {fprintf(stderr,"clCreateKernel: 'intersect' %d\n",err);return -2;}
 	produce = clCreateKernel(program, "produce", &err);
+	if(err != CL_SUCCESS) {fprintf(stderr,"clCreateKernel: 'produce' %d\n",err);return -2;}
 	draw = clCreateKernel(program, "draw" , &err);
+	if(err != CL_SUCCESS) {fprintf(stderr,"clCreateKernel: 'draw' %d\n",err);return -2;}
 	compact = clCreateKernel(program, "compact" , &err);
+	if(err != CL_SUCCESS) {fprintf(stderr,"clCreateKernel: 'compact' %d\n",err);return -2;}
 		
 	return 0;
 }
@@ -247,6 +269,8 @@ void rayDispose()
 	clReleaseMemObject(cl_ray_count);
 	clReleaseMemObject(pitch);
 	clReleaseMemObject(work_size);
+	clReleaseMemObject(deviation);
+	clReleaseMemObject(cl_random);
 	clReleaseMemObject(cl_image);
 	
 	clReleaseCommandQueue(command_queue);
@@ -311,9 +335,10 @@ int rayRender()
 	  cam_ori[6], cam_ori[7], cam_ori[8],
 	  cam_fov
 	};
-	clEnqueueWriteBuffer(command_queue,cam_fdata,CL_TRUE,0,sizeof(float)*CAM_FSIZE, cam_array, 0, NULL, NULL);
+	clEnqueueWriteBuffer(command_queue,cam_fdata,CL_TRUE,0,sizeof(float)*CAM_FSIZE,cam_array,0,NULL,NULL);
 	clFlush(command_queue);
 	
+	clEnqueueWriteBuffer(command_queue,pitch,CL_TRUE,0,sizeof(unsigned int),&width,0,NULL,NULL);
 	
 	size_t global_work_size[2] = {width,height};
 	size_t local_work_size[2] = {8,8};
@@ -324,20 +349,19 @@ int rayRender()
 	clSetKernelArg(start, 2, sizeof(cl_mem), (void*)&cam_fdata);
 	
 	clEnqueueNDRangeKernel(command_queue,start,2,NULL,global_work_size,local_work_size,0,NULL,NULL);
+	clFlush(command_queue);
 	
 	// clFlush(command_queue);
 	
 	unsigned int ray_count = width*height;
 	
-	int i, depth = 8;
+	int i, depth = 16;
 	for(i = 0; i < depth; ++i)
 	{
 		size_t local_size = 64;
-		size_t global_size = (int)(local_size*(floor((float)ray_count/local_size) + 1));
-		size_t one = 1;
+		size_t global_size = local_size*((int)floor((float)ray_count/local_size) + 1);
 		
 		clEnqueueWriteBuffer(command_queue,work_size,CL_TRUE,0,sizeof(unsigned int),&ray_count,0,NULL,NULL);
-		clFlush(command_queue);
 		
 		// intersect
 		clSetKernelArg(intersect, 0, sizeof(cl_mem), (void*)&ray_fdata);
@@ -348,19 +372,24 @@ int rayRender()
 		clSetKernelArg(intersect, 5, sizeof(cl_mem), (void*)&work_size);
 		
 		clEnqueueNDRangeKernel(command_queue,intersect,1,NULL,&global_size,&local_size,0,NULL,NULL);
-		// clFlush(command_queue);
-		
-		clEnqueueWriteBuffer(command_queue,cl_ray_count,CL_TRUE,0,sizeof(unsigned int),&ray_count,0,NULL,NULL);
 		clFlush(command_queue);
 		
 		// compact
 		clSetKernelArg(compact, 0, sizeof(cl_mem), (void*)&hit_info);
 		clSetKernelArg(compact, 1, sizeof(cl_mem), (void*)&cl_ray_count);
+		clSetKernelArg(compact, 2, sizeof(cl_mem), (void*)&deviation);
+		clSetKernelArg(compact, 3, sizeof(cl_mem), (void*)&work_size);
 		
-		clEnqueueNDRangeKernel(command_queue,compact,1,NULL,&one,&one,0,NULL,NULL);
+		int dev;
+		for(dev = 0; (1<<dev) < ray_count || (dev%2); ++dev)
+		{
+			clEnqueueWriteBuffer(command_queue,deviation,CL_TRUE,0,sizeof(unsigned int),&dev,0,NULL,NULL);
+			clEnqueueNDRangeKernel(command_queue,compact,1,NULL,&global_size,&local_size,0,NULL,NULL);
+			clFlush(command_queue);
+		}
 		
 		clEnqueueReadBuffer(command_queue,cl_ray_count,CL_TRUE,0,sizeof(unsigned int),&ray_count,0,NULL,NULL);
-		clFlush(command_queue);
+		// fprintf(stdout,"ray_count: %d\n",ray_count);
 		
 		// produce
 		clSetKernelArg(produce, 0, sizeof(cl_mem), (void*)&hit_fdata);
@@ -371,10 +400,15 @@ int rayRender()
 		clSetKernelArg(produce, 5, sizeof(cl_mem), (void*)&color_buffer);
 		clSetKernelArg(produce, 6, sizeof(cl_mem), (void*)&pitch);
 		clSetKernelArg(produce, 7, sizeof(cl_mem), (void*)&work_size);
+		clSetKernelArg(produce, 8, sizeof(cl_mem), (void*)&cl_random);
 		
 		clEnqueueNDRangeKernel(command_queue,produce,1,NULL,&global_size,&local_size,0,NULL,NULL);
+		clFlush(command_queue);
 		
-		// clFlush(command_queue);
+		if(ray_count == 0)
+		{
+			break;
+		}
 	}
 	
 	
