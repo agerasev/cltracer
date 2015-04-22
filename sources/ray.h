@@ -1,10 +1,12 @@
 #pragma once
 
-#define RAY_GL
-
 #include <CL/cl.h>
 #ifdef RAY_GL
 #include <GL/glew.h>
+#endif
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
 int  rayInit(int w, int h);
@@ -17,7 +19,7 @@ void raySetSize(int w, int h);
 void raySetPos(const float *pos);
 void raySetOri(const float *ang);
 
-void rayLoadGeometry(const float *geom, long size);
+void rayLoadGeometry(const float *geom, size_t size);
 void rayLoadInstance(const float *map, const unsigned *index, long size);
 
 void rayClear();
@@ -27,3 +29,6 @@ void rayGetImage(float *data);
 GLuint rayGetGLTexture();
 #endif
 
+#ifdef __cplusplus
+}
+#endif

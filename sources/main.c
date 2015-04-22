@@ -94,7 +94,7 @@ int main(int argc, char *argv[])
 	}
 	rayRender();
 	
-	SDL_SetRelativeMouseMode(mmode);
+	SDL_SetRelativeMouseMode((SDL_bool)mmode);
 	while(!done)
 	{
 		int updv = 0;

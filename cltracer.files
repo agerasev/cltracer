@@ -5,7 +5,7 @@ gl/shader.vert
 gl/shader.frag
 sources/gl.h
 sources/ray.h
-sources/ray.c
+sources/ray.cpp
 cl/ray.cl
 cl/camera.cl
 cl/hit.cl
@@ -21,3 +21,9 @@ cl/kernel.cl
 clean.sh
 build.sh
 cl/compose.sh
+sources/kernel.hpp
+sources/globals.hpp
+sources/buffer_object.hpp
+sources/utility.hpp
+sources/exception.hpp
+sources/work_range.hpp
