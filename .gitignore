@@ -1,2 +1,5 @@
 build
 *.user
+
+cl/kernel.cl
+*.mp4

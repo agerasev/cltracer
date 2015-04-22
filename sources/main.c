@@ -25,7 +25,7 @@ static SDL_GLContext sdl_glcontext = NULL;
 
 static float yaw = 0.0f, pitch = 0.0f;
 static float pos[3] = {0.0f,0.0f,0.0f};
-static float fov = 0.5f;
+static float fov = 0.5f, rad = 0.1f, dof = 4.0f;
 
 int main(int argc, char *argv[])
 {
@@ -76,8 +76,6 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 	
-	rayRender();
-	
 	int done = 0;
 	SDL_Event event;
 	int ws = 0, as = 0, ss = 0, ds = 0, spcs = 0, ctls = 0;
@@ -87,9 +85,20 @@ int main(int argc, char *argv[])
 	SDL_Surface *image = SDL_CreateRGBSurface(SDL_SWSURFACE,width,height,24,0x0000ff,0x00ff00,0xff0000,0x000000);
 	int counter = 0;
 	
+	raySetPos(pos);
+	raySetFov(fov);
+	raySetDof(rad,dof);
+	{
+		const float ang[2] = {yaw,pitch};
+		raySetOri(ang);
+	}
+	rayRender();
+	
 	SDL_SetRelativeMouseMode(mmode);
 	while(!done)
 	{
+		int updv = 0;
+		int updm = 0;
 		while(SDL_PollEvent(&event))
 		{
 			if(event.type == SDL_QUIT)
@@ -177,6 +186,7 @@ int main(int argc, char *argv[])
 				{
 					pitch = M_PI/2.0f;
 				}
+				updm = 1;
 			}
 			else
 			if(event.type == SDL_MOUSEWHEEL)
@@ -184,23 +194,43 @@ int main(int argc, char *argv[])
 				if(event.wheel.y > 0)
 				{
 					fov /= 1.2f;
+					updv = 1;
 				}
 				else
 				if(event.wheel.y < 0)
 				{
 					fov *= 1.2f;
+					updv = 1;
 				}
 			}
 		}
 		
-		const float spd = 0.1;
-		pos[0] += spd*((ss - ws)*sin(yaw) + (ds - as)*cos(yaw))*cos(pitch);
-		pos[1] += spd*((ws - ss)*cos(yaw) + (ds - as)*sin(yaw))*cos(pitch);
-		pos[2] += spd*(spcs - ctls) + spd*(ws - ss)*sin(pitch);
-		raySetFov(fov);
-		const float ang[2] = {yaw,pitch}; 
-		raySetOri(ang);
-		raySetPos(pos);
+		int upd = 0;
+		if(ws || as || ss || ds || spcs || ctls)
+		{
+			const float spd = 0.1;
+			pos[0] += spd*((ss - ws)*sin(yaw) + (ds - as)*cos(yaw))*cos(pitch);
+			pos[1] += spd*((ws - ss)*cos(yaw) + (ds - as)*sin(yaw))*cos(pitch);
+			pos[2] += spd*(spcs - ctls) + spd*(ws - ss)*sin(pitch);
+			raySetPos(pos);
+			upd = 1;
+		}
+		if(updv)
+		{
+			raySetFov(fov);
+			raySetDof(rad,dof);
+			upd = 1;
+		}
+		if(updm)
+		{
+			const float ang[2] = {yaw,pitch}; 
+			raySetOri(ang);
+			upd = 1;
+		}
+		if(upd)
+		{
+			rayClear();
+		}
 		rayRender();
 		
 		GLuint texture = rayGetGLTexture();

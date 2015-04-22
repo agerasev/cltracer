@@ -52,7 +52,7 @@ static void __printKernelCompilationInfo(cl_program program, cl_device_id device
 	free(buffer);
 }
 
-#define CAM_FSIZE 13
+#define CAM_FSIZE 15
 
 #define RAY_FSIZE 9
 #define RAY_ISIZE 2
@@ -77,9 +77,10 @@ static cl_mem cl_image;
 static cl_mem cam_fdata;
 static cl_mem ray_fdata, ray_idata;
 static cl_mem hit_fdata, hit_idata;
-static cl_mem color_buffer;
+static cl_mem color_buffer, accum_buffer;
 static cl_mem hit_info, cl_ray_count;
-static cl_mem pitch, work_size, deviation;
+static cl_mem pitch, work_size;
+static cl_mem number, factor;
 static cl_mem cl_random;
 
 static cl_program program;
@@ -95,6 +96,9 @@ static float cam_ori[9] =
   0,1,0
 };
 static float cam_fov = 1.0f;
+static float cam_rad = 0.01f;
+static float cam_dof = 4.0f;
+static unsigned long samples = 0;
 
 static void __get_platform_and_device()
 {
@@ -197,11 +201,13 @@ int rayInit(int w, int h)
 	hit_idata = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(int)*HIT_ISIZE*buffer_size,NULL,&err);
 	cam_fdata = clCreateBuffer(context,CL_MEM_READ_ONLY,sizeof(float)*CAM_FSIZE,NULL,&err);
 	color_buffer = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int)*3*screen_size,NULL,&err);
+	accum_buffer = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(float)*3*screen_size,NULL,&err);
 	hit_info = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int)*HIT_INFO_SIZE*buffer_size,NULL,&err);
 	cl_ray_count = clCreateBuffer(context,CL_MEM_READ_WRITE,2*sizeof(unsigned int),NULL,&err);
 	pitch = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int),NULL,&err);
 	work_size = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int),NULL,&err);
-	deviation = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int),NULL,&err);
+	number = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int),NULL,&err);
+	factor = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(float),NULL,&err);
 	cl_random = clCreateBuffer(context,CL_MEM_READ_WRITE,sizeof(unsigned int)*buffer_size,NULL,&err);
 	
 	unsigned seed = 0;
@@ -213,6 +219,15 @@ int rayInit(int w, int h)
 	clEnqueueWriteBuffer(command_queue,cl_random,CL_TRUE,0,sizeof(unsigned int)*buffer_size,random_buffer,0,NULL,NULL);
 	clFlush(command_queue);
 	free(random_buffer);
+	
+	float *accum_buffer_data = malloc(sizeof(float)*3*screen_size);
+	for(i = 0; i < 3*screen_size; ++i)
+	{
+		accum_buffer_data[i] = 0.0f;
+	}
+	clEnqueueWriteBuffer(command_queue,accum_buffer,CL_TRUE,0,sizeof(float)*3*screen_size,accum_buffer_data,0,NULL,NULL);
+	clFlush(command_queue);
+	free(accum_buffer_data);
 	
 	// Create a program from the kernel source
 	size_t source_size;
@@ -265,11 +280,13 @@ void rayDispose()
 	clReleaseMemObject(hit_fdata);
 	clReleaseMemObject(hit_idata);
 	clReleaseMemObject(color_buffer);
+	clReleaseMemObject(accum_buffer);
 	clReleaseMemObject(hit_info);
 	clReleaseMemObject(cl_ray_count);
 	clReleaseMemObject(pitch);
 	clReleaseMemObject(work_size);
-	clReleaseMemObject(deviation);
+	clReleaseMemObject(number);
+	clReleaseMemObject(factor);
 	clReleaseMemObject(cl_random);
 	clReleaseMemObject(cl_image);
 	
@@ -281,6 +298,12 @@ void rayDispose()
 void raySetFov(float yfov)
 {
 	cam_fov = yfov;
+}
+
+void raySetDof(float rad, float dof)
+{
+	cam_rad = rad;
+	cam_dof = dof;
 }
 
 void raySetSize(int w, int h)
@@ -324,6 +347,11 @@ void rayLoadInstance(const float *map, const unsigned *index, long size)
 	
 }
 
+void rayClear()
+{
+	samples = 0;
+}
+
 int rayRender()
 {
 	// Create buffers
@@ -333,7 +361,7 @@ int rayRender()
 	  cam_ori[0], cam_ori[1], cam_ori[2],
 	  cam_ori[3], cam_ori[4], cam_ori[5],
 	  cam_ori[6], cam_ori[7], cam_ori[8],
-	  cam_fov
+	  cam_fov, cam_rad, cam_dof
 	};
 	clEnqueueWriteBuffer(command_queue,cam_fdata,CL_TRUE,0,sizeof(float)*CAM_FSIZE,cam_array,0,NULL,NULL);
 	clFlush(command_queue);
@@ -347,6 +375,7 @@ int rayRender()
 	clSetKernelArg(start, 0, sizeof(cl_mem), (void*)&ray_fdata);
 	clSetKernelArg(start, 1, sizeof(cl_mem), (void*)&ray_idata);
 	clSetKernelArg(start, 2, sizeof(cl_mem), (void*)&cam_fdata);
+	clSetKernelArg(start, 3, sizeof(cl_mem), (void*)&cl_random);
 	
 	clEnqueueNDRangeKernel(command_queue,start,2,NULL,global_work_size,local_work_size,0,NULL,NULL);
 	clFlush(command_queue);
@@ -377,13 +406,13 @@ int rayRender()
 		// compact
 		clSetKernelArg(compact, 0, sizeof(cl_mem), (void*)&hit_info);
 		clSetKernelArg(compact, 1, sizeof(cl_mem), (void*)&cl_ray_count);
-		clSetKernelArg(compact, 2, sizeof(cl_mem), (void*)&deviation);
+		clSetKernelArg(compact, 2, sizeof(cl_mem), (void*)&number);
 		clSetKernelArg(compact, 3, sizeof(cl_mem), (void*)&work_size);
 		
 		int dev;
 		for(dev = 0; (1<<dev) < ray_count || (dev%2); ++dev)
 		{
-			clEnqueueWriteBuffer(command_queue,deviation,CL_TRUE,0,sizeof(unsigned int),&dev,0,NULL,NULL);
+			clEnqueueWriteBuffer(command_queue,number,CL_TRUE,0,sizeof(unsigned int),&dev,0,NULL,NULL);
 			clEnqueueNDRangeKernel(command_queue,compact,1,NULL,&global_size,&local_size,0,NULL,NULL);
 			clFlush(command_queue);
 		}
@@ -414,7 +443,13 @@ int rayRender()
 	
 	// draw
 	clSetKernelArg(draw, 0, sizeof(cl_mem), (void*)&color_buffer);
-	clSetKernelArg(draw, 1, sizeof(cl_mem), (void*)&cl_image);
+	clSetKernelArg(draw, 1, sizeof(cl_mem), (void*)&accum_buffer);
+	clSetKernelArg(draw, 2, sizeof(cl_mem), (void*)&factor);
+	clSetKernelArg(draw, 3, sizeof(cl_mem), (void*)&cl_image);
+	
+	++samples;
+	float mul = 1.0/samples;
+	clEnqueueWriteBuffer(command_queue,factor,CL_TRUE,0,sizeof(float),&mul,0,NULL,NULL);
 	
 #ifdef RAY_GL
 	clEnqueueAcquireGLObjects(command_queue, 1, &cl_image, 0, 0, 0);

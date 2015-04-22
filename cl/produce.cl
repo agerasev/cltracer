@@ -24,8 +24,8 @@ float3 diffuse(float3 dir, float3 norm, uint *seed)
 	ny = normalize(cross(nx,norm));
 	nx = cross(ny,norm);
 
-	float phi = 2.0f*M_PI_F*random_unif(random_next(seed));
-	float theta = acos(1.0f - 2.0f*random_unif(random_next(seed)))/2.0f;
+	float phi = 2.0f*M_PI_F*random_unif(seed);
+	float theta = acos(1.0f - 2.0f*random_unif(seed))/2.0f;
 	return nx*cos(phi)*sin(theta) + ny*sin(phi)*sin(theta) + norm*cos(theta);
 }
 
@@ -63,30 +63,33 @@ __kernel void produce(
 		Ray ray;
 		ray.pos = hit.pos + hit.norm*DELTA;
 		
-		ray.dir = diffuse(hit.dir,hit.norm,&seed); //reflect(hit.dir,hit.norm);
+		// ray.dir = diffuse(hit.dir,hit.norm,&seed);
+		// ray.dir = reflect(hit.dir,hit.norm);
 		
 		ray.color = hit.color;
 		ray.origin = hit.origin;
 		switch(hit.object)
 		{
 		case 1:
-			ray.color *= (float3)(0.4f,0.4f,1.0f);
+			ray.color *= (float3)(0.0f,0.0f,0.6f);
 			break;
 		case 2:
-			ray.color *= (float3)(1.0f,0.4f,0.4f);
+			ray.color *= (float3)(0.6f,0.0f,0.0f);
 			break;
 		case 3:
-			ray.color *= (float3)(0.4f,1.0f,0.4f);
+			ray.color *= (float3)(0.0f,0.6f,0.0f);
 			break;
 		}
-		ray.color /= 2.0f;
+		// ray.color /= 2.0f;
 		
 		HitInfo info = hit_info_load(pos,hit_info);
 		
-		ray.dir = diffuse(hit.dir,hit.norm,&seed); //reflect(hit.dir,hit.norm);
+		ray.dir = diffuse(hit.dir,hit.norm,&seed);
 		ray_store(&ray,info.offset - info.size,ray_fdata,ray_idata);
 		
-		ray.dir = diffuse(hit.dir,hit.norm,&seed); //reflect(hit.dir,hit.norm);
+		ray.color = hit.color*(float3)(0.4f,0.4f,0.4f);
+		
+		ray.dir = reflect(hit.dir,hit.norm);
 		ray_store(&ray,info.offset - info.size + 1,ray_fdata,ray_idata);
 		
 		random[pos] = seed;

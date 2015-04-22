@@ -11,6 +11,7 @@ int  rayInit(int w, int h);
 void rayDispose();
 
 void raySetFov(float yfov);
+void raySetDof(float rad, float dof);
 void raySetSize(int w, int h);
 
 void raySetPos(const float *pos);
@@ -19,6 +20,7 @@ void raySetOri(const float *ang);
 void rayLoadGeometry(const float *geom, long size);
 void rayLoadInstance(const float *map, const unsigned *index, long size);
 
+void rayClear();
 int  rayRender();
 void rayGetImage(float *data);
 #ifdef RAY_GL
