@@ -1,6 +1,6 @@
 #pragma once
 
-#define CAM_FSIZE 15
+#define CAM_SIZE 27
 
 #define RAY_FSIZE 9
 #define RAY_ISIZE 2
@@ -8,7 +8,7 @@
 #define HIT_FSIZE 12
 #define HIT_ISIZE 3
 
-#define HIT_INFO_SIZE 8
+#define HIT_INFO_SIZE 10
 
 #define MAX_CHILD_RAYS 2
 
@@ -45,7 +45,18 @@ static float cam_ori[9] =
   0,0,1,
   0,1,0
 };
+static float cam_pre_pos[3] = {0.0f,0.0f,0.0f};
+static float cam_pre_ori[9] = 
+{
+  1,0,0,
+  0,0,1,
+  0,1,0
+};
 static float cam_fov = 1.0f;
 static float cam_rad = 0.01f;
 static float cam_dof = 4.0f;
+
 static unsigned long samples = 0;
+
+size_t screen_size;
+size_t buffer_size;

@@ -10,4 +10,5 @@ __kernel void expand(__global uint *hit_info, __global const uint *diffuse_facto
 	HitInfo info = hit_info_load(pos,hit_info);
 	info.size = info.pre_size.x + info.pre_size.y*factor;
 	info.offset = info.pre_offset.x + info.pre_offset.y*factor - info.size;
+	hit_info_store(&info,pos,hit_info);
 }

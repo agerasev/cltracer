@@ -15,17 +15,21 @@
 #include "gl.h"
 #include "ray.h"
 
-// #define SAVE_IMAGE
+//#define RECORD
+//#define PLAYBACK
+//#define SAVE_IMAGE
 #define PRINT_FPS
 
-static int width = 800;
-static int height = 600;
+#define SAMPLES 0x1
+
+static int width = 800;//1280;
+static int height = 600;//720;
 static SDL_Window *sdl_window = NULL;
 static SDL_GLContext sdl_glcontext = NULL;
 
 static float yaw = 0.0f, pitch = 0.0f;
 static float pos[3] = {0.0f,0.0f,0.0f};
-static float fov = 0.5f, rad = 0.1f, dof = 4.0f;
+static float fov = 0.5f, rad = 0.01f, dof = 4.0f;
 
 int main(int argc, char *argv[])
 {
@@ -76,6 +80,14 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 	
+#ifdef RECORD
+	FILE *rec_file = fopen("record","wb");
+#endif
+	
+#ifdef PLAYBACK
+	FILE *rec_file = fopen("record","rb");
+#endif
+	
 	int done = 0;
 	SDL_Event event;
 	int ws = 0, as = 0, ss = 0, ds = 0, spcs = 0, ctls = 0;
@@ -89,12 +101,13 @@ int main(int argc, char *argv[])
 	raySetFov(fov);
 	raySetDof(rad,dof);
 	{
-		const float ang[2] = {yaw,pitch};
-		raySetOri(ang);
+		raySetOri(yaw,pitch);
 	}
 	rayRender();
-	
+
+#ifndef PLAYBACK
 	SDL_SetRelativeMouseMode((SDL_bool)mmode);
+#endif
 	while(!done)
 	{
 		int updv = 0;
@@ -205,33 +218,73 @@ int main(int argc, char *argv[])
 			}
 		}
 		
+#ifdef RECORD
+		int ndone = 1;
+		fwrite((void*)&ndone,sizeof(int),1,rec_file);
+#endif
+
+#ifdef PLAYBACK
+		int ndone = 0;
+		fread((void*)&ndone,sizeof(int),1,rec_file);
+		if(!ndone)
+		{
+			break;
+		}
+#endif
+
 		int upd = 0;
+#ifndef PLAYBACK
 		if(ws || as || ss || ds || spcs || ctls)
 		{
 			const float spd = 0.1;
 			pos[0] += spd*((ss - ws)*sin(yaw) + (ds - as)*cos(yaw))*cos(pitch);
 			pos[1] += spd*((ws - ss)*cos(yaw) + (ds - as)*sin(yaw))*cos(pitch);
 			pos[2] += spd*(spcs - ctls) + spd*(ws - ss)*sin(pitch);
-			raySetPos(pos);
 			upd = 1;
 		}
-		if(updv)
+		if(updv || updm)
 		{
+			upd = 1;
+		}
+#endif
+
+#ifdef RECORD
+			fwrite((void*)pos,3*sizeof(float),1,rec_file);
+			fwrite((void*)&fov,sizeof(float),1,rec_file);
+			fwrite((void*)&rad,sizeof(float),1,rec_file);
+			fwrite((void*)&dof,sizeof(float),1,rec_file);
+			fwrite((const void*)&yaw,sizeof(float),1,rec_file);
+			fwrite((const void*)&pitch,sizeof(float),1,rec_file);
+			fwrite((void*)&upd,sizeof(int),1,rec_file);
+#endif
+
+#ifdef PLAYBACK
+			fread((void*)pos,3*sizeof(float),1,rec_file);
+			fread((void*)&fov,sizeof(float),1,rec_file);
+			fread((void*)&rad,sizeof(float),1,rec_file);
+			fread((void*)&dof,sizeof(float),1,rec_file);
+			fread((void*)&yaw,sizeof(float),1,rec_file);
+			fread((void*)&pitch,sizeof(float),1,rec_file);
+			fread((void*)&upd,sizeof(int),1,rec_file);
+#endif
+		
+		if(upd)
+		{
+			raySetPos(pos);
 			raySetFov(fov);
 			raySetDof(rad,dof);
-			upd = 1;
+			raySetOri(yaw,pitch);
+			rayClear();
 		}
-		if(updm)
+		int i;
+		for(i = 0; i < SAMPLES; ++i)
 		{
-			const float ang[2] = {yaw,pitch}; 
-			raySetOri(ang);
-			upd = 1;
+			rayRender();
 		}
 		if(upd)
 		{
-			rayClear();
+			rayUpdateMotion();
 		}
-		rayRender();
 		
 		GLuint texture = rayGetGLTexture();
 		drawGLTexture(texture);
@@ -262,6 +315,19 @@ int main(int argc, char *argv[])
 		}
 #endif // PRINT_FPS
 	}
+
+#ifdef RECORD
+	int ndone = 0;
+	fwrite((void*)&ndone,sizeof(int),1,rec_file);
+#endif
+	
+#ifdef RECORD
+	fclose(rec_file);
+#endif
+	
+#ifdef PLAYBACK
+	fclose(rec_file);
+#endif
 	
 	// Clean up
 	rayDispose();

@@ -15,12 +15,14 @@ __kernel void intersect(
 	Ray ray = ray_load(pos,ray_fdata,ray_idata);
 	
 	// Collide with uniform sphere
-	const float3 sph_pos[3] = {(float3)(0.0f,4.0f,0.0f),(float3)(3.0f,6.0f,0.0f),(float3)(0.0f,4.0f,-4.0f)};
-	const float sph_rad[3] = {1.0f,1.6f,2.4f};
+	const float3 sph_pos[4] = {(float3)(0.0f,4.0f,0.0f),(float3)(1.0f,1.0f,0.0f),(float3)(0.0f,2.0f,-4.0f),(float3)(-2.0f,2.0f,1.0f)};
+	const float sph_rad[4] = {1.0f,0.8f,3.2f,0.4f};
+	const uint2 sph_mat[4] = {{1,1},{1,1},{0,1},{0,0}};
+	
 	int i, hit_obj = 0;
 	float min_dist;
 	float3 hit_pos, hit_norm;
-	for(i = 0; i < 3; ++i)
+	for(i = 0; i < 4; ++i)
 	{
 		float dist = dot(sph_pos[i] - ray.pos,ray.dir);
 		float3 lpos = ray.pos + dist*ray.dir;
@@ -49,8 +51,20 @@ __kernel void intersect(
 	hit.object = hit_obj;
 	
 	HitInfo info;
-	info.size = 2*(hit_obj > 0);
-	info.offset = 2*(hit_obj > 0);
+	
+	info.size = 0;
+	info.offset = info.size;
+	
+	info.pre_size.x = 0;
+	info.pre_size.y = 0;
+	if(hit_obj)
+	{
+		info.pre_size.x = sph_mat[hit_obj-1].x;
+		info.pre_size.y = sph_mat[hit_obj-1].y;
+	}
+	info.pre_offset.x = info.pre_size.x;
+	info.pre_offset.y = info.pre_size.y;
+	
 	hit_info_store(&info,pos,hit_info);
 	
 	hit_store(&hit,pos,hit_fdata,hit_idata);

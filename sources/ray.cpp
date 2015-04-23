@@ -159,18 +159,18 @@ int rayInit(int w, int h)
 	
 	cl_image = __get_image();
 	
-	size_t screen_size = width*height;
-	size_t buffer_size = screen_size*MAX_CHILD_RAYS;
+	screen_size = width*height;
+	buffer_size = screen_size*MAX_CHILD_RAYS;
 	
 	buffers.insert(buffer_map::value_type("ray_fdata",new buffer_object(sizeof(float)*RAY_FSIZE*buffer_size)));
 	buffers.insert(buffer_map::value_type("ray_idata",new buffer_object(sizeof(int)*RAY_ISIZE*buffer_size)));
 	buffers.insert(buffer_map::value_type("hit_fdata",new buffer_object(sizeof(float)*HIT_FSIZE*buffer_size)));
 	buffers.insert(buffer_map::value_type("hit_idata",new buffer_object(sizeof(int)*HIT_ISIZE*buffer_size)));
-	buffers.insert(buffer_map::value_type("cam_fdata",new buffer_object(sizeof(float)*CAM_FSIZE)));
+	buffers.insert(buffer_map::value_type("cam_fdata",new buffer_object(sizeof(float)*CAM_SIZE)));
 	buffers.insert(buffer_map::value_type("color_buffer",new buffer_object(sizeof(unsigned int)*3*screen_size)));
 	buffers.insert(buffer_map::value_type("accum_buffer",new buffer_object(sizeof(float)*3*screen_size)));
 	buffers.insert(buffer_map::value_type("hit_info",new buffer_object(sizeof(unsigned int)*HIT_INFO_SIZE*buffer_size)));
-	buffers.insert(buffer_map::value_type("cl_ray_count",new buffer_object(2*sizeof(unsigned int))));
+	buffers.insert(buffer_map::value_type("cl_ray_count",new buffer_object(3*sizeof(unsigned int))));
 	buffers.insert(buffer_map::value_type("pitch",new buffer_object(sizeof(unsigned int))));
 	buffers.insert(buffer_map::value_type("work_size",new buffer_object(sizeof(unsigned int))));
 	buffers.insert(buffer_map::value_type("number",new buffer_object(sizeof(unsigned int))));
@@ -236,6 +236,7 @@ int rayInit(int w, int h)
 	kernels.insert(kernel_map::value_type("produce",new kernel("produce")));
 	kernels.insert(kernel_map::value_type("draw",new kernel("draw")));
 	kernels.insert(kernel_map::value_type("compact",new kernel("compact")));
+	kernels.insert(kernel_map::value_type("expand",new kernel("expand")));
 	
 	/*
 	start = kernels["start"]->get_cl_kernel();
@@ -288,17 +289,40 @@ void raySetSize(int w, int h)
 	
 }
 
+static void __move_cam_pos()
+{
+	cam_pre_pos[0] = cam_pos[0];
+	cam_pre_pos[1] = cam_pos[1];
+	cam_pre_pos[2] = cam_pos[2];
+}
+
 void raySetPos(const float *pos)
 {
+	__move_cam_pos();
+	
 	cam_pos[0] = pos[0];
 	cam_pos[1] = pos[1];
 	cam_pos[2] = pos[2];
 }
 
-void raySetOri(const float *ang)
+static void __move_cam_ori()
 {
-	float yaw = ang[0];
-	float pitch = ang[1];
+	cam_pre_ori[0] = cam_ori[0];
+	cam_pre_ori[1] = cam_ori[1];
+	cam_pre_ori[2] = cam_ori[2];
+	
+	cam_pre_ori[3] = cam_ori[3];
+	cam_pre_ori[4] = cam_ori[4];
+	cam_pre_ori[5] = cam_ori[5];
+	
+	cam_pre_ori[6] = cam_ori[6];
+	cam_pre_ori[7] = cam_ori[7];
+	cam_pre_ori[8] = cam_ori[8];
+}
+
+void raySetOri(float yaw, float pitch)
+{
+	__move_cam_ori();
 	
 	cam_ori[0] = cos(yaw);
 	cam_ori[1] = sin(yaw);
@@ -329,15 +353,26 @@ void rayClear()
 	samples = 0;
 }
 
+void rayUpdateMotion()
+{
+	__move_cam_pos();
+	__move_cam_ori();
+	rayClear();
+}
+
 int rayRender()
 {
 	// Create buffers
-	float cam_array[CAM_FSIZE] =
+	float cam_array[CAM_SIZE] =
 	{
 	  cam_pos[0], cam_pos[1], cam_pos[2],
 	  cam_ori[0], cam_ori[1], cam_ori[2],
 	  cam_ori[3], cam_ori[4], cam_ori[5],
 	  cam_ori[6], cam_ori[7], cam_ori[8],
+	  cam_pre_pos[0], cam_pre_pos[1], cam_pre_pos[2],
+	  cam_pre_ori[0], cam_pre_ori[1], cam_pre_ori[2],
+	  cam_pre_ori[3], cam_pre_ori[4], cam_pre_ori[5],
+	  cam_pre_ori[6], cam_pre_ori[7], cam_pre_ori[8],
 	  cam_fov, cam_rad, cam_dof
 	};
 	clEnqueueWriteBuffer(command_queue,buffers["cam_fdata"]->get_cl_mem(),CL_TRUE,0,buffers["cam_fdata"]->get_size(),cam_array,0,NULL,NULL);
@@ -360,8 +395,10 @@ int rayRender()
 	clFlush(command_queue);
 	
 	unsigned int ray_count = width*height;
+	unsigned int rc2[2] = {ray_count,0};
 	
-	int i, depth = 16;
+	uint sdr = (1 - samples)*(1 - (int)samples > 0);
+	int i, depth = 4 - sdr;
 	for(i = 0; i < depth; ++i)
 	{
 		work_range range1d = {ray_count};
@@ -382,23 +419,66 @@ int rayRender()
 		);
 		clFlush(command_queue);
 		
-		// compact
-		int dev;
-		for(dev = 0; (1<<dev) < ray_count || (dev%2); ++dev)
+		if(i < depth - 1)
 		{
-			clEnqueueWriteBuffer(command_queue,buffers["number"]->get_cl_mem(),CL_TRUE,0,buffers["number"]->get_size(),&dev,0,NULL,NULL);
-			kernels["compact"]->evaluate(
-			  range1d,
-			  buffers["hit_info"],
-			  buffers["cl_ray_count"],
-			  buffers["number"],
-			  buffers["work_size"]
+			// compact
+			int dev;
+			for(dev = 0; (1<<dev) < ray_count || (dev%2); ++dev)
+			{
+				clEnqueueWriteBuffer(command_queue,buffers["number"]->get_cl_mem(),CL_TRUE,0,buffers["number"]->get_size(),&dev,0,NULL,NULL);
+				kernels["compact"]->evaluate(
+					range1d,
+					buffers["hit_info"],
+					buffers["cl_ray_count"],
+					buffers["number"],
+					buffers["work_size"]
+				);
+				clFlush(command_queue);
+			}
+			
+			clEnqueueReadBuffer(command_queue,buffers["cl_ray_count"]->get_cl_mem(),CL_TRUE,0,sizeof(unsigned int),&ray_count,0,NULL,NULL);
+			clEnqueueReadBuffer(command_queue,buffers["cl_ray_count"]->get_cl_mem(),CL_TRUE,sizeof(unsigned int),2*sizeof(unsigned int),&rc2,0,NULL,NULL);
+			
+			unsigned int mfactor = 0;
+			if(rc2[1] != 0)
+			{
+				mfactor = (buffer_size - rc2[0])/rc2[1];
+				unsigned mdif = 1;
+				unsigned shift = (2 - samples)*(2 - (int)samples > 0);
+				switch(i)
+				{
+				case 0:
+					mdif = 8>>shift;
+					break;
+				case 1:
+					mdif = 4>>shift;
+					break;
+				case 2:
+					mdif = 2>>shift;
+					break;
+				default:
+					mdif = 1>>shift;
+					break;
+				}
+				if(mfactor > mdif)
+				{
+					mfactor = mdif;
+				}
+			}
+			ray_count = rc2[0] + mfactor*rc2[1];
+			
+			clEnqueueWriteBuffer(command_queue,buffers["number"]->get_cl_mem(),CL_TRUE,0,buffers["number"]->get_size(),&mfactor,0,NULL,NULL);
+			
+			kernels["expand"]->evaluate(
+				range1d,
+				buffers["hit_info"],
+				buffers["number"],
+				buffers["work_size"]
 			);
 			clFlush(command_queue);
 		}
 		
-		clEnqueueReadBuffer(command_queue,buffers["cl_ray_count"]->get_cl_mem(),CL_TRUE,0,sizeof(unsigned int),&ray_count,0,NULL,NULL);
-		// fprintf(stdout,"ray_count: %d\n",ray_count);
+		// fprintf(stdout,"ray_count: %d, rc2: {%d,%d}\n",ray_count,rc2[0],rc2[1]);
 		
 		// produce
 		kernels["produce"]->evaluate(
@@ -422,7 +502,8 @@ int rayRender()
 	}
 	
 	++samples;
-	float mul = 1.0/samples;
+	uint csmp = samples - (samples < 3)*(samples - 1);
+	float mul = 1.0/csmp;
 	clEnqueueWriteBuffer(command_queue,buffers["factor"]->get_cl_mem(),CL_TRUE,0,buffers["factor"]->get_size(),&mul,0,NULL,NULL);
 	
 #ifdef RAY_GL

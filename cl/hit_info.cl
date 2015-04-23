@@ -1,12 +1,12 @@
-#define HIT_INFO_SIZE 8
+#define HIT_INFO_SIZE 10
 
 typedef struct
 {
 	uint size;
 	uint offset;
-	uint2 pre_size;
 	uint2 pre_offset;
 	uint2 pre_offset_tmp;
+	uint2 pre_size;
 }
 HitInfo;
 

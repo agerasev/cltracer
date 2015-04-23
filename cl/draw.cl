@@ -11,6 +11,8 @@ __kernel void draw(
 	  *factor*((float3)((float)icolor.x,(float)icolor.y,(float)icolor.z)/(float)0x10000) + 
 	  (1.0f - *factor)*vload3(pos.x + size.x*pos.y,accum_buffer);;
 	
+	color = clamp(color,(float3)(0.0,0.0,0.0),(float3)(1.0,1.0,1.0));
+	
 	vstore3((uint3)(0,0,0),pos.x + size.x*pos.y,color_buffer);
 	vstore3(color,pos.x + size.x*pos.y,accum_buffer);
 	

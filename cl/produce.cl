@@ -2,7 +2,7 @@
 
 float3 get_sky_color(float3 dir)
 {
-	return (float3)(dir.z,dir.z,dir.z)*0.5f + (float3)(0.5f,0.5f,0.5f);
+	return (float3)(0.6f,0.6f,0.8f)*((float3)(dir.z,dir.z,dir.z)*0.5f + (float3)(0.5f,0.5f,0.5f));
 }
 
 float3 reflect(float3 dir, float3 norm)
@@ -10,7 +10,7 @@ float3 reflect(float3 dir, float3 norm)
 	return dir - 2.0f*norm*dot(dir,norm);
 }
 
-float3 diffuse(float3 dir, float3 norm, uint *seed)
+float3 diffuse(float3 norm, uint *seed)
 {
 	float3 nx, ny;
 	if(dot((float3)(0.0f,0.0f,1.0f),norm) < 0.6 && dot((float3)(0.0f,0.0f,1.0f),norm) > -0.6)
@@ -29,6 +29,15 @@ float3 diffuse(float3 dir, float3 norm, uint *seed)
 	return nx*cos(phi)*sin(theta) + ny*sin(phi)*sin(theta) + norm*cos(theta);
 }
 
+float3 reflect_diffused(float3 dir, float3 norm, float factor, uint *seed)
+{
+	float3 dif = diffuse(norm,seed);
+	float3 ref = reflect(dir,norm);
+	float par = dot(dif,norm);
+	float3 ort = dif - par*norm;
+	return normalize(factor*par*ref + ort);
+}
+
 __kernel void produce(
 	__global const float *hit_fdata, __global const int *hit_idata,
 	__global float *ray_fdata, __global int *ray_idata, __global const uint *hit_info,
@@ -44,53 +53,60 @@ __kernel void produce(
 		return;
 	}
 	
-	Hit hit = hit_load(pos,hit_fdata,hit_idata);
-	float3 color = hit.color;
+	const float3 diff[4] = {{0.0f,0.0f,0.6f},{0.2f,0.2f,0.0f},{0.0f,1.0f,0.0f},{0.0f,0.0f,0.0f}};
+	const float3 refl[4] = {{0.4f,0.4f,0.4f},{0.8f,0.8f,0.2f},{0.0f,0.0f,0.0f},{0.8f,0.8f,0.8f}};
+	const float3 glow[4] = {{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{3.2f,3.2f,2.4f}};
 	
+	Hit hit = hit_load(pos,hit_fdata,hit_idata);
+	
+	float3 color = {0.0f,0.0f,0.0f};
+	
+	// glowing
 	if(hit.object == 0)
 	{
-		color *= get_sky_color(hit.dir);
+		color += hit.color*get_sky_color(hit.dir);
 	}
 	else
 	{
-		color *= (float3)(0.0f,0.0f,0.0f);
+		color += hit.color*glow[hit.object-1];
 	}
 	
-	if(hit_info[HIT_INFO_SIZE*pos + 0] > 0)
+	HitInfo info = hit_info_load(pos,hit_info);
+	
+	if(info.size > 0)
 	{
 		uint seed = random[pos];
 		
 		Ray ray;
 		ray.pos = hit.pos + hit.norm*DELTA;
 		
-		// ray.dir = diffuse(hit.dir,hit.norm,&seed);
-		// ray.dir = reflect(hit.dir,hit.norm);
-		
-		ray.color = hit.color;
 		ray.origin = hit.origin;
-		switch(hit.object)
+		
+		uint count = 0;
+		
+		// reflection
+		if(info.pre_size.x)
 		{
-		case 1:
-			ray.color *= (float3)(0.0f,0.0f,0.6f);
-			break;
-		case 2:
-			ray.color *= (float3)(0.6f,0.0f,0.0f);
-			break;
-		case 3:
-			ray.color *= (float3)(0.0f,0.6f,0.0f);
-			break;
+			ray.color = hit.color*refl[hit.object-1];
+			if(hit.object-1 == 1)
+			{
+				ray.dir = reflect_diffused(hit.dir,hit.norm,8.0f,&seed);
+			}
+			else
+			{
+				ray.dir = reflect(hit.dir,hit.norm);
+			}
+		  ray_store(&ray,info.offset,ray_fdata,ray_idata);
+		  ++count;
 		}
-		// ray.color /= 2.0f;
 		
-		HitInfo info = hit_info_load(pos,hit_info);
-		
-		ray.dir = diffuse(hit.dir,hit.norm,&seed);
-		ray_store(&ray,info.offset - info.size,ray_fdata,ray_idata);
-		
-		ray.color = hit.color*(float3)(0.4f,0.4f,0.4f);
-		
-		ray.dir = reflect(hit.dir,hit.norm);
-		ray_store(&ray,info.offset - info.size + 1,ray_fdata,ray_idata);
+		// diffusion
+		ray.color = hit.color*diff[hit.object-1]/(info.size-count);
+		for(; count < info.size; ++count)
+		{
+			ray.dir = diffuse(hit.norm,&seed);
+			ray_store(&ray,info.offset + count,ray_fdata,ray_idata);
+		}
 		
 		random[pos] = seed;
 	}

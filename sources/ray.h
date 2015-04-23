@@ -17,12 +17,13 @@ void raySetDof(float rad, float dof);
 void raySetSize(int w, int h);
 
 void raySetPos(const float *pos);
-void raySetOri(const float *ang);
+void raySetOri(float yaw, float pitch);
 
 void rayLoadGeometry(const float *geom, size_t size);
 void rayLoadInstance(const float *map, const unsigned *index, long size);
 
 void rayClear();
+void rayUpdateMotion();
 int  rayRender();
 void rayGetImage(float *data);
 #ifdef RAY_GL
