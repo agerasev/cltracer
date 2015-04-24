@@ -27,3 +27,7 @@ sources/buffer_object.hpp
 sources/utility.hpp
 sources/exception.hpp
 sources/work_range.hpp
+sources/source.hpp
+sources/map.hpp
+cl/sweep_up.cl
+cl/sweep_down.cl

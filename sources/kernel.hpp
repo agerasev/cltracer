@@ -16,6 +16,7 @@ private:
 	cl_kernel kern;
 	std::string name;
 	cl_uint arg_count;
+	cl_event event;
 	
 	void set_arg(size_t pos, cl_mem mem) throw(cl_exception)
 	{
@@ -82,9 +83,19 @@ public:
 		}
 	}
 	
+	const char *get_name() const
+	{
+		return name.data();
+	}
+	
 	cl_kernel get_cl_kernel() const
 	{
 		return kern;
+	}
+	
+	cl_event get_cl_event() const
+	{
+		return event;
 	}
 	
 	template <typename ... Args>
@@ -97,7 +108,7 @@ public:
 		    command_queue,kern,
 		    range.get_dim(),range.get_offset(),
 				range.get_global_size(),range.get_local_size(),
-		    0,NULL,NULL
+		    0,NULL,&event
 		  );
 		if(ret != CL_SUCCESS)
 		{
