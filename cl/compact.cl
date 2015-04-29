@@ -1,11 +1,11 @@
-__kernel void compact(__global uint *hit_info, __global uint *ray_count, __global const uint *deviation, __global const uint *work_size)
+/** compact.cl */
+
+__kernel void compact(__global uint *hit_info, __global uint *ray_count, const uint dev, const uint work_size)
 {
-	const int size = *work_size;//get_global_size(0);
 	const int pos = get_global_id(0);
-	const int dev = *deviation;
 	const int edev = (1<<dev);
 	
-	if(pos >= size)
+	if(pos >= work_size)
 	{
 		return;
 	}
@@ -32,7 +32,7 @@ __kernel void compact(__global uint *hit_info, __global uint *ray_count, __globa
 	
 	sum = sum2.x;
 	
-	if(pos == size - 1)
+	if(pos == work_size - 1)
 	{
 		ray_count[0] = sum;
 		ray_count[1] = sum2.x;

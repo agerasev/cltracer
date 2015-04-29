@@ -42,23 +42,43 @@ public:
 		return size;
 	}
 	
-	void load_data(void *data, size_t length)
+	void load_data(cl_command_queue queue, void *data, size_t offset, size_t length) const throw(cl_exception)
 	{
-		
+		cl_int ret;
+		ret = clEnqueueReadBuffer(queue,mem,CL_TRUE,offset,length,data,0,NULL,NULL);
+		if(ret != CL_SUCCESS)
+		{
+			throw cl_exception("clEnqueueReadBuffer",ret);
+		}
 	}
 	
-	void load_data(void *data)
+	void load_data(cl_command_queue queue, void *data, size_t length) const throw(cl_exception)
 	{
-		load_data(data,size);
+		load_data(queue,data,0,length);
 	}
 	
-	void store_data(void *data, size_t length)
+	void load_data(cl_command_queue queue, void *data) const throw(cl_exception)
 	{
-		
+		load_data(queue,data,size);
 	}
 	
-	void store_data(void *data)
+	void store_data(cl_command_queue queue, void *data, size_t offset, size_t length) throw(cl_exception)
 	{
-		store_data(data,size);
+		cl_int ret;
+		ret = clEnqueueWriteBuffer(queue,mem,CL_TRUE,offset,length,data,0,NULL,NULL);
+		if(ret != CL_SUCCESS)
+		{
+			throw cl_exception("clEnqueueWriteBuffer",ret);
+		}
+	}
+	
+	void store_data(cl_command_queue queue, void *data, size_t length) throw(cl_exception)
+	{
+		store_data(queue,data,0,length);
+	}
+	
+	void store_data(cl_command_queue queue, void *data) throw(cl_exception)
+	{
+		store_data(queue,data,size);
 	}
 };

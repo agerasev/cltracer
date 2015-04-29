@@ -7,7 +7,7 @@
 #include "buffer_object.hpp"
 #include "work_range.hpp"
 
-#include <cassert>
+#include <cstdio>
 #include <string>
 
 class kernel
@@ -18,7 +18,7 @@ private:
 	cl_uint arg_count;
 	cl_event event;
 	
-	void set_arg(size_t pos, cl_mem mem) throw(cl_exception)
+	void set_mem_arg(cl_uint pos, cl_mem mem) throw(cl_exception)
 	{
 		cl_int ret;
 		ret = clSetKernelArg(kern,pos,sizeof(cl_mem),reinterpret_cast<void*>(&mem));
@@ -28,30 +28,65 @@ private:
 		}
 	}
 	
-	template <typename ... Args>
-	static void unroll_args(kernel *self, size_t count, buffer_object *buf_obj, Args ... args) throw(cl_exception)
+	template <typename T>
+	void set_var_arg(cl_uint pos, T var) throw(cl_exception)
 	{
-		self->set_arg(count,buf_obj->get_cl_mem());
+		cl_int ret;
+		ret = clSetKernelArg(kern,pos,sizeof(T),reinterpret_cast<void*>(&var));
+		if(ret != CL_SUCCESS)
+		{
+			throw cl_exception("clSetKernelArg",ret);
+		}
+	}
+	
+	void check_args_count(cl_uint count) throw(exception)
+	{
+		if(count != arg_count)
+		{
+			char strbuf[0x100];
+			snprintf(strbuf,0xff,"kernel '%s' takes %u arguments, %u given",name.data(),arg_count,count);
+			throw(exception(strbuf));
+		}
+	}
+	
+	template <typename ... Args>
+	static void unroll_args(kernel *self, cl_uint count, buffer_object *buf_obj, Args ... args) throw(exception)
+	{
+		self->set_mem_arg(count,buf_obj->get_cl_mem());
 		unroll_args(self,count+1,args...);
 	}
 	
-	static void unroll_args(kernel *self, size_t count, buffer_object *buf_obj) throw(cl_exception)
-	{
-		self->set_arg(count,buf_obj->get_cl_mem());
-		assert(count + 1 == self->arg_count);
-	}
-	
 	template <typename ... Args>
-	static void unroll_args(kernel *self, size_t count, cl_mem mem, Args ... args) throw(cl_exception)
+	static void unroll_args(kernel *self, cl_uint count, cl_mem mem, Args ... args) throw(exception)
 	{
-		self->set_arg(count,mem);
+		self->set_mem_arg(count,mem);
 		unroll_args(self,count+1,args...);
 	}
 	
-	static void unroll_args(kernel *self, size_t count, cl_mem mem) throw(cl_exception)
+	template <typename T, typename ... Args>
+	static void unroll_args(kernel *self, cl_uint count, T var, Args ... args) throw(exception)
 	{
-		self->set_arg(count,mem);
-		assert(count + 1 == self->arg_count);
+		self->set_var_arg(count,var);
+		unroll_args(self,count+1,args...);
+	}
+	
+	static void unroll_args(kernel *self, cl_uint count, buffer_object *buf_obj) throw(exception)
+	{
+		self->set_mem_arg(count,buf_obj->get_cl_mem());
+		self->check_args_count(count+1);
+	}
+	
+	static void unroll_args(kernel *self, cl_uint count, cl_mem mem) throw(exception)
+	{
+		self->set_mem_arg(count,mem);
+		self->check_args_count(count+1);
+	}
+	
+	template <typename T>
+	static void unroll_args(kernel *self, cl_uint count, T var) throw(exception)
+	{
+		self->set_var_arg(count,var);
+		self->check_args_count(count+1);
 	}
 	
 public:
@@ -99,7 +134,7 @@ public:
 	}
 	
 	template <typename ... Args>
-	void evaluate(const work_range &range, Args ... args) throw(cl_exception)
+	void evaluate(const work_range &range, Args ... args) throw(exception)
 	{
 		cl_int ret;
 		unroll_args(this,0,args...);

@@ -1,3 +1,5 @@
+/** produce.cl */
+
 #define DELTA 1e-8f
 
 float3 get_sky_color(float3 dir)
@@ -39,16 +41,15 @@ float3 reflect_diffused(float3 dir, float3 norm, float factor, uint *seed)
 }
 
 __kernel void produce(
-	__global const float *hit_fdata, __global const int *hit_idata,
-	__global float *ray_fdata, __global int *ray_idata, __global const uint *hit_info,
-	__global uint *color_buffer, __global const uint *pitch, __global const uint *work_size,
+	__global const uchar *hit_data, __global uchar *ray_data, __global const uint *hit_info,
+	__global uint *color_buffer, const uint pitch, const uint work_size,
 	__global uint *random
 )
 {
 	const int size = get_global_size(0);
 	const int pos = get_global_id(0);
 	
-	if(pos >= *work_size)
+	if(pos >= work_size)
 	{
 		return;
 	}
@@ -57,7 +58,7 @@ __kernel void produce(
 	const float3 refl[4] = {{0.4f,0.4f,0.4f},{0.8f,0.8f,0.2f},{0.0f,0.0f,0.0f},{0.8f,0.8f,0.8f}};
 	const float3 glow[4] = {{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{3.2f,3.2f,2.4f}};
 	
-	Hit hit = hit_load(pos,hit_fdata,hit_idata);
+	Hit hit = hit_load(pos,hit_data);
 	
 	float3 color = {0.0f,0.0f,0.0f};
 	
@@ -96,7 +97,7 @@ __kernel void produce(
 			{
 				ray.dir = reflect(hit.dir,hit.norm);
 			}
-		  ray_store(&ray,info.offset,ray_fdata,ray_idata);
+		  ray_store(&ray,info.offset,ray_data);
 		  ++count;
 		}
 		
@@ -105,14 +106,14 @@ __kernel void produce(
 		for(; count < info.size; ++count)
 		{
 			ray.dir = diffuse(hit.norm,&seed);
-			ray_store(&ray,info.offset + count,ray_fdata,ray_idata);
+			ray_store(&ray,info.offset + count,ray_data);
 		}
 		
 		random[pos] = seed;
 	}
 	
 	// replace with atomic_add for float in later version
-	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y**pitch) + 0, (uint)(0x10000*color.x));
-	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y**pitch) + 1, (uint)(0x10000*color.y));
-	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y**pitch) + 2, (uint)(0x10000*color.z));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 0, (uint)(0x10000*color.x));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 1, (uint)(0x10000*color.y));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 2, (uint)(0x10000*color.z));
 }

@@ -1,18 +1,19 @@
+/** intersect.cl */
+
 __kernel void intersect(
-	__global const float *ray_fdata, __global const int *ray_idata,
-	__global float *hit_fdata, __global int *hit_idata, 
-	__global uint *hit_info, __global const uint *work_size
+	__global const uchar *ray_data, __global uchar *hit_data,
+	__global uint *hit_info, const uint work_size
 )
 {
 	const int size = get_global_size(0);
 	const int pos = get_global_id(0);
 	
-	if(pos >= *work_size)
+	if(pos >= work_size)
 	{
 		return;
 	}
 	
-	Ray ray = ray_load(pos,ray_fdata,ray_idata);
+	Ray ray = ray_load(pos,ray_data);
 	
 	// Collide with uniform sphere
 	const float3 sph_pos[4] = {(float3)(0.0f,4.0f,0.0f),(float3)(1.0f,1.0f,0.0f),(float3)(0.0f,2.0f,-4.0f),(float3)(-2.0f,2.0f,1.0f)};
@@ -67,5 +68,5 @@ __kernel void intersect(
 	
 	hit_info_store(&info,pos,hit_info);
 	
-	hit_store(&hit,pos,hit_fdata,hit_idata);
+	hit_store(&hit,pos,hit_data);
 }

@@ -1,3 +1,5 @@
+/** hit_info.cl */
+
 #define HIT_INFO_SIZE 10
 
 typedef struct

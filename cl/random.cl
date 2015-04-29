@@ -1,3 +1,5 @@
+/** random.cl */
+
 uint random_next(uint *seed)
 {
 	return (*seed = 1103515245**seed + 12345);

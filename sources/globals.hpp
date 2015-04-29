@@ -2,11 +2,9 @@
 
 #define CAM_SIZE 27
 
-#define RAY_FSIZE 9
-#define RAY_ISIZE 2
+#define RAY_SIZE (9*sizeof(float) + 2*sizeof(int))
 
-#define HIT_FSIZE 12
-#define HIT_ISIZE 3
+#define HIT_SIZE (12*sizeof(float) + 3*sizeof(int))
 
 #define HIT_INFO_SIZE 10
 
@@ -22,21 +20,10 @@ static cl_command_queue command_queue;
 static GLuint gl_texture_id;
 #endif
 static cl_mem cl_image;
-/*
-static cl_mem cam_fdata;
-static cl_mem ray_fdata, ray_idata;
-static cl_mem hit_fdata, hit_idata;
-static cl_mem color_buffer, accum_buffer;
-static cl_mem hit_info, cl_ray_count;
-static cl_mem pitch, work_size;
-static cl_mem number, factor;
-static cl_mem cl_random;
-*/
 
 static cl_program program;
-//static cl_kernel start, intersect, produce, draw, compact;
 
-static int width, height;
+static unsigned int width, height;
 
 static float cam_pos[3] = {0.0f,0.0f,0.0f};
 static float cam_ori[9] = 

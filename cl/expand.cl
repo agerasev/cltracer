@@ -1,9 +1,9 @@
-__kernel void expand(__global uint *hit_info, __global const uint *diffuse_factor, __global const uint *work_size)
+/** expand.cl */
+
+__kernel void expand(__global uint *hit_info, const uint factor, const uint work_size)
 {
-	const uint size = *work_size;//get_global_size(0);
 	const uint pos = get_global_id(0);
-	const uint factor = *diffuse_factor;
-	if(pos >= size)
+	if(pos >= work_size)
 	{
 		return;
 	}

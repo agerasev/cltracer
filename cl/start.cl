@@ -1,5 +1,7 @@
+/* start.cl */
+
 __kernel void start(
-  __global float *ray_fdata, __global int *ray_idata, 
+  __global uchar *ray_data, 
   __constant float *cam_fdata, __global uint *random
 )
 {
@@ -33,5 +35,5 @@ __kernel void start(
 	ray.color = (float3)(1.0f,1.0f,1.0f);
 	
 	random[size.x*pos.y + pos.x] = seed;
-	ray_store(&ray, size.x*pos.y + pos.x, ray_fdata, ray_idata);
+	ray_store(&ray, size.x*pos.y + pos.x, ray_data);
 }

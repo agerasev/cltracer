@@ -1,3 +1,4 @@
+/** camera.cl */
 #define CAM_SIZE 27
 
 typedef struct

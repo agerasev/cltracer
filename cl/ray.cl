@@ -1,5 +1,10 @@
-#define RAY_FSIZE 9
-#define RAY_ISIZE 2
+/** ray.cl */
+
+#define RAY_FSIZE (9*sizeof(float))
+#define RAY_ISIZE (2*sizeof(int))
+#define RAY_FOFFSET 0
+#define RAY_IOFFSET RAY_FSIZE
+#define RAY_SIZE (RAY_FSIZE + RAY_ISIZE)
 
 typedef struct
 {
@@ -10,34 +15,26 @@ typedef struct
 } 
 Ray;
 
-void ray_load_fdata(Ray *ray, int offset, __global const float *data)
-{
-	__global const float *ray_data = data + offset*RAY_FSIZE;
-	ray->pos = vload3(0,ray_data);
-	ray->dir = vload3(1,ray_data);
-	ray->color = vload3(2,ray_data);
-}
-
-void ray_load_idata(Ray *ray, int offset, __global const int *data)
-{
-	__global const int *ray_data = data + offset*RAY_ISIZE;
-	ray->origin = vload2(0,ray_data);
-}
-
-Ray ray_load(int offset, __global const float *fdata, __global const int *idata)
+Ray ray_load(int offset, __global const uchar *ray_data)
 {
 	Ray ray;
-	ray_load_fdata(&ray,offset,fdata);
-	ray_load_idata(&ray,offset,idata);
+	__global const uchar *data = ray_data + offset*RAY_SIZE;
+	__global const float *fdata = (__global const float*)(data + RAY_FOFFSET);
+	__global const int *idata = (__global const int*)(data + RAY_IOFFSET);
+	ray.pos = vload3(0,fdata);
+	ray.dir = vload3(1,fdata);
+	ray.color = vload3(2,fdata);
+	ray.origin = vload2(0,idata);
 	return ray;
 }
 
-void ray_store(Ray *ray, int offset, __global float *fdata, __global int *idata)
+void ray_store(Ray *ray, int offset, __global uchar *ray_data)
 {
-	__global float *ray_fdata = fdata + offset*RAY_FSIZE;
-	__global int *ray_idata = idata + offset*RAY_ISIZE;
-	vstore3(ray->pos,0,ray_fdata);
-	vstore3(ray->dir,1,ray_fdata);
-	vstore3(ray->color,2,ray_fdata);
-	vstore2(ray->origin,0,ray_idata);
+	__global uchar *data = ray_data + offset*RAY_SIZE;
+	__global float *fdata = (__global float*)(data + RAY_FOFFSET);
+	__global int *idata = (__global int*)(data + RAY_IOFFSET);
+	vstore3(ray->pos,0,fdata);
+	vstore3(ray->dir,1,fdata);
+	vstore3(ray->color,2,fdata);
+	vstore2(ray->origin,0,idata);
 }

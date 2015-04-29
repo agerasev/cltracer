@@ -1,3 +1,5 @@
+/** sweep_up.cl */
+
 __kernel void sweep_up(__global uint *hit_info, __global uint *ray_count, __global const uint *deviation, __global const uint *work_size)
 {
 	const int size = *work_size;//get_global_size(0);

@@ -13,20 +13,23 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include <string>
-#include <map>
-
 #include "globals.hpp"
 #include "buffer_object.hpp"
 #include "kernel.hpp"
 #include "work_range.hpp"
 #include "source.hpp"
+#include "map.hpp"
 
-typedef std::map<std::string,buffer_object*> buffer_map;
-typedef std::map<std::string,kernel*> kernel_map;
+typedef map<buffer_object*> buffer_map;
+typedef map<kernel*> kernel_map;
 
 buffer_map buffers;
 kernel_map kernels;
+
+void insert_kernel(kernel_map &m, kernel *k)
+{
+	m.insert(k->get_name(),k);
+}
 
 static unsigned l2pow(unsigned num)
 {
@@ -119,7 +122,7 @@ static cl_mem __get_image()
 	}
 #else // RAY_GL
 	// create cl_image here
-	return clCreateImage2D(context,CL_MEM_READ_WRITE,...,width,height,1,NULL,&err);
+	return clCreateImage2D(context,CL_MEM_READ_WRITE,NULL,width,height,1,NULL,&err); //???
 #endif // RAY_GL
 }
 
@@ -142,24 +145,18 @@ int rayInit(int w, int h)
 	screen_size = width*height;
 	buffer_size = 1<<l2pow(screen_size*MAX_CHILD_RAYS);
 	
-	buffers.insert(buffer_map::value_type("ray_fdata",new buffer_object(sizeof(float)*RAY_FSIZE*buffer_size)));
-	buffers.insert(buffer_map::value_type("ray_idata",new buffer_object(sizeof(int)*RAY_ISIZE*buffer_size)));
-	buffers.insert(buffer_map::value_type("hit_fdata",new buffer_object(sizeof(float)*HIT_FSIZE*buffer_size)));
-	buffers.insert(buffer_map::value_type("hit_idata",new buffer_object(sizeof(int)*HIT_ISIZE*buffer_size)));
-	buffers.insert(buffer_map::value_type("cam_fdata",new buffer_object(sizeof(float)*CAM_SIZE)));
-	buffers.insert(buffer_map::value_type("color_buffer",new buffer_object(sizeof(unsigned int)*3*screen_size)));
-	buffers.insert(buffer_map::value_type("accum_buffer",new buffer_object(sizeof(float)*3*screen_size)));
-	buffers.insert(buffer_map::value_type("hit_info",new buffer_object(sizeof(unsigned int)*HIT_INFO_SIZE*buffer_size)));
-	buffers.insert(buffer_map::value_type("cl_ray_count",new buffer_object(3*sizeof(unsigned int))));
-	buffers.insert(buffer_map::value_type("pitch",new buffer_object(sizeof(unsigned int))));
-	buffers.insert(buffer_map::value_type("work_size",new buffer_object(sizeof(unsigned int))));
-	buffers.insert(buffer_map::value_type("number",new buffer_object(sizeof(unsigned int))));
-	buffers.insert(buffer_map::value_type("factor",new buffer_object(sizeof(float))));
-	buffers.insert(buffer_map::value_type("cl_random",new buffer_object(sizeof(unsigned int)*buffer_size)));
+	buffers.insert("ray_data",     new buffer_object(RAY_SIZE*buffer_size));
+	buffers.insert("hit_data",     new buffer_object(HIT_SIZE*buffer_size));
+	buffers.insert("cam_fdata",    new buffer_object(sizeof(float)*CAM_SIZE));
+	buffers.insert("color_buffer", new buffer_object(sizeof(int)*3*screen_size));
+	buffers.insert("accum_buffer", new buffer_object(sizeof(float)*3*screen_size));
+	buffers.insert("hit_info",     new buffer_object(sizeof(int)*HIT_INFO_SIZE*buffer_size));
+	buffers.insert("cl_ray_count", new buffer_object(3*sizeof(int)));
+	buffers.insert("cl_random",    new buffer_object(sizeof(int)*buffer_size));
 	
 	unsigned seed = 0;
 	unsigned *random_buffer = (unsigned*)malloc(sizeof(unsigned)*buffer_size);
-	for(i = 0; i < buffer_size; ++i)
+	for(i = 0; i < int(buffer_size); ++i)
 	{
 		random_buffer[i] = (seed = 3942082377*seed + 1234567);
 	}
@@ -169,7 +166,7 @@ int rayInit(int w, int h)
 	free(random_buffer);
 	
 	float *accum_buffer_data = (float*)malloc(sizeof(float)*3*screen_size);
-	for(i = 0; i < 3*screen_size; ++i)
+	for(i = 0; i < int(3*screen_size); ++i)
 	{
 		accum_buffer_data[i] = 0.0f;
 	}
@@ -194,14 +191,14 @@ int rayInit(int w, int h)
 	}
 	
 	// Create the OpenCL kernel
-	kernels.insert(kernel_map::value_type("start",new kernel("start")));
-	kernels.insert(kernel_map::value_type("intersect",new kernel("intersect")));
-	kernels.insert(kernel_map::value_type("produce",new kernel("produce")));
-	kernels.insert(kernel_map::value_type("draw",new kernel("draw")));
-	kernels.insert(kernel_map::value_type("compact",new kernel("compact")));
-	kernels.insert(kernel_map::value_type("sweep_up",new kernel("sweep_up")));
-	kernels.insert(kernel_map::value_type("sweep_down",new kernel("sweep_down")));
-	kernels.insert(kernel_map::value_type("expand",new kernel("expand")));
+	insert_kernel(kernels,new kernel("start"));
+	insert_kernel(kernels,new kernel("intersect"));
+	insert_kernel(kernels,new kernel("produce"));
+	insert_kernel(kernels,new kernel("draw"));
+	insert_kernel(kernels,new kernel("compact"));
+	insert_kernel(kernels,new kernel("sweep_up"));
+	insert_kernel(kernels,new kernel("sweep_down"));
+	insert_kernel(kernels,new kernel("expand"));
 	
 	return 0;
 }
@@ -332,6 +329,9 @@ static void __printExecTime(kernel *k)
 	printf("%s exec time: %0.3f ms\n",k->get_name(),(__measureTime(k->get_cl_event())/1000000.0));
 }
 
+#define NAIVE_SCAN
+#define PRINT_TIME
+
 int rayRender()
 {
 	// Create buffers
@@ -347,24 +347,23 @@ int rayRender()
 	  cam_pre_ori[6], cam_pre_ori[7], cam_pre_ori[8],
 	  cam_fov, cam_rad, cam_dof
 	};
-	clEnqueueWriteBuffer(command_queue,buffers["cam_fdata"]->get_cl_mem(),CL_TRUE,0,buffers["cam_fdata"]->get_size(),cam_array,0,NULL,NULL);
-	clFlush(command_queue);
-	
-	clEnqueueWriteBuffer(command_queue,buffers["pitch"]->get_cl_mem(),CL_TRUE,0,buffers["pitch"]->get_size(),&width,0,NULL,NULL);
+	buffers["cam_fdata"]->store_data(command_queue,cam_array);
 	
 	work_range range2d = {width,height};
+	size_t work_size;
 	//size_t global_work_size[2] = {width,height};
 	//size_t local_work_size[2] = {8,8};
 	
 	// start
 	kernels["start"]->evaluate(
 	  range2d,
-	  buffers["ray_fdata"],
-	  buffers["ray_idata"],
+	  buffers["ray_data"],
 	  buffers["cam_fdata"],
 	  buffers["cl_random"]
 	);
+#ifdef PRINT_TIME
 	__printExecTime(kernels["start"]);
+#endif // PRINT_TIME
 	clFlush(command_queue);
 	
 	unsigned int ray_count = width*height;
@@ -375,46 +374,45 @@ int rayRender()
 	for(i = 0; i < depth; ++i)
 	{
 		work_range range1d = {ray_count};
-		//size_t local_size = 64;
-		//size_t global_size = local_size*((int)floor((float)ray_count/local_size) + 1);
 		
-		clEnqueueWriteBuffer(command_queue,buffers["work_size"]->get_cl_mem(),CL_TRUE,0,buffers["work_size"]->get_size(),&ray_count,0,NULL,NULL);
+		work_size = ray_count;
 		
 		// intersect
 		kernels["intersect"]->evaluate(
 		  range1d,
-		  buffers["ray_fdata"],
-		  buffers["ray_idata"],
-		  buffers["hit_fdata"],
-		  buffers["hit_idata"],
+		  buffers["ray_data"],
+		  buffers["hit_data"],
 		  buffers["hit_info"],
-		  buffers["work_size"]
+		  int(work_size)
 		);
+#ifdef PRINT_TIME
 		__printExecTime(kernels["intersect"]);
+#endif // PRINT_TIME
 		clFlush(command_queue);
 		
 		if(i < depth - 1)
 		{
 			int dev;
 			
+#ifdef NAIVE_SCAN
 			// compact
-			for(dev = 0; (1<<dev) < ray_count || (dev%2); ++dev)
+			for(dev = 0; (1<<dev) < int(ray_count) || (dev%2); ++dev)
 			{
-				clEnqueueWriteBuffer(command_queue,buffers["number"]->get_cl_mem(),CL_TRUE,0,buffers["number"]->get_size(),&dev,0,NULL,NULL);
 				kernels["compact"]->evaluate(
 					range1d,
 					buffers["hit_info"],
 					buffers["cl_ray_count"],
-					buffers["number"],
-					buffers["work_size"]
+					int(dev),
+					int(work_size)
 				);
+#ifdef PRINT_TIME
 				__printExecTime(kernels["compact"]);
+#endif
 				clFlush(command_queue);
 			}
-			
-			/*
+#else // NAIVE_SCAN
 			dev = 0;
-			int r2p = 1<<l2pow(ray_count);
+			unsigned int r2p = 8;//1<<l2pow(ray_count);
 			clEnqueueWriteBuffer(command_queue,buffers["work_size"]->get_cl_mem(),CL_TRUE,0,buffers["work_size"]->get_size(),&r2p,0,NULL,NULL);
 			
 			// fprintf(stdout,"ray_count: %d, r2p: %d\n",ray_count,r2p);
@@ -433,7 +431,23 @@ int rayRender()
 				);
 				__printExecTime(kernels["sweep_up"]);
 				clFlush(command_queue);
+				
+				int buf[64*HIT_INFO_SIZE/sizeof(int)];
+				clEnqueueReadBuffer(command_queue,buffers["hit_info"]->get_cl_mem(),CL_TRUE,0,64*HIT_INFO_SIZE*sizeof(int),buf,0,NULL,NULL);
+				int j;
+				for(j = 0; j < 64; ++j)
+				{
+					int *tmp = buf + HIT_INFO_SIZE*j;
+					fprintf(stdout,"%d ",tmp[4]);
+				}
+				for(j = 0; j < 64; ++j)
+				{
+					int *tmp = buf + HIT_INFO_SIZE*j;
+					fprintf(stdout,"%d ",tmp[6]);
+				}
 			}
+			
+			// return -1;
 			
 			// sweep down
 			unsigned zeros[2] = {0,0};
@@ -454,10 +468,10 @@ int rayRender()
 			}
 			
 			clEnqueueWriteBuffer(command_queue,buffers["work_size"]->get_cl_mem(),CL_TRUE,0,buffers["work_size"]->get_size(),&ray_count,0,NULL,NULL);
-			*/
+#endif // NAIVE_SCAN
 			
-			clEnqueueReadBuffer(command_queue,buffers["cl_ray_count"]->get_cl_mem(),CL_TRUE,0,sizeof(unsigned int),&ray_count,0,NULL,NULL);
-			clEnqueueReadBuffer(command_queue,buffers["cl_ray_count"]->get_cl_mem(),CL_TRUE,sizeof(unsigned int),2*sizeof(unsigned int),&rc2,0,NULL,NULL);
+			buffers["cl_ray_count"]->load_data(command_queue,&ray_count,sizeof(int));
+			buffers["cl_ray_count"]->load_data(command_queue,rc2,sizeof(int),2*sizeof(int));
 			
 			unsigned int mfactor = 0;
 			if(rc2[1] != 0)
@@ -487,15 +501,15 @@ int rayRender()
 			}
 			ray_count = rc2[0] + mfactor*rc2[1];
 			
-			clEnqueueWriteBuffer(command_queue,buffers["number"]->get_cl_mem(),CL_TRUE,0,buffers["number"]->get_size(),&mfactor,0,NULL,NULL);
-			
 			kernels["expand"]->evaluate(
 				range1d,
 				buffers["hit_info"],
-				buffers["number"],
-				buffers["work_size"]
+				int(mfactor),
+				int(work_size)
 			);
+#ifdef PRINT_TIME
 			__printExecTime(kernels["expand"]);
+#endif // PRINT_TIME
 			clFlush(command_queue);
 		}
 		
@@ -505,14 +519,12 @@ int rayRender()
 		// produce
 		kernels["produce"]->evaluate(
 		  range1d,
-		  buffers["hit_fdata"],
-		  buffers["hit_idata"],
-		  buffers["ray_fdata"],
-		  buffers["ray_idata"],
+		  buffers["hit_data"],
+		  buffers["ray_data"],
 		  buffers["hit_info"],
 		  buffers["color_buffer"],
-		  buffers["pitch"],
-		  buffers["work_size"],
+		  int(width),
+		  int(work_size),
 		  buffers["cl_random"]
 		);
 		__printExecTime(kernels["produce"]);
@@ -527,7 +539,6 @@ int rayRender()
 	++samples;
 	uint csmp = samples - (samples < 3)*(samples - 1);
 	float mul = 1.0/csmp;
-	clEnqueueWriteBuffer(command_queue,buffers["factor"]->get_cl_mem(),CL_TRUE,0,buffers["factor"]->get_size(),&mul,0,NULL,NULL);
 	
 #ifdef RAY_GL
 	clEnqueueAcquireGLObjects(command_queue, 1, &cl_image, 0, 0, 0);
@@ -537,7 +548,7 @@ int rayRender()
 	  range2d,
 	  buffers["color_buffer"],
 	  buffers["accum_buffer"],
-	  buffers["factor"],
+	  float(mul),
 	  cl_image
 	);
 	__printExecTime(kernels["draw"]);
