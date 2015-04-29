@@ -41,7 +41,7 @@ float3 reflect_diffused(float3 dir, float3 norm, float factor, uint *seed)
 }
 
 __kernel void produce(
-	__global const uchar *hit_data, __global uchar *ray_data, __global const uint *hit_info,
+	__global const uchar *hit_data, __global uchar *ray_data, __global const uchar *hit_info,
 	__global uint *color_buffer, const uint pitch, const uint work_size,
 	__global uint *random
 )

@@ -2,7 +2,7 @@
 
 __kernel void intersect(
 	__global const uchar *ray_data, __global uchar *hit_data,
-	__global uint *hit_info, const uint work_size
+	__global uchar *hit_info, const uint work_size
 )
 {
 	const int size = get_global_size(0);

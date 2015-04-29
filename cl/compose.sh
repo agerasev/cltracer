@@ -11,6 +11,4 @@ cat intersect.cl  >> kernel.cl
 cat produce.cl    >> kernel.cl
 cat draw.cl       >> kernel.cl
 cat compact.cl    >> kernel.cl
-cat sweep_up.cl   >> kernel.cl
-cat sweep_down.cl >> kernel.cl
-cat expand.cl     >> kernel.cl
+cat sweep.cl      >> kernel.cl

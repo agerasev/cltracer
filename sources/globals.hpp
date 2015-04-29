@@ -1,12 +1,9 @@
 #pragma once
 
-#define CAM_SIZE 27
-
+#define CAM_SIZE (27*sizeof(float))
 #define RAY_SIZE (9*sizeof(float) + 2*sizeof(int))
-
 #define HIT_SIZE (12*sizeof(float) + 3*sizeof(int))
-
-#define HIT_INFO_SIZE 10
+#define HIT_INFO_SIZE (6*sizeof(int))
 
 #define MAX_CHILD_RAYS 2
 

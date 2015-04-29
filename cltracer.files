@@ -14,8 +14,6 @@ cl/hit_info.cl
 cl/produce.cl
 cl/start.cl
 cl/intersect.cl
-cl/expand.cl
-cl/compact.cl
 cl/draw.cl
 cl/kernel.cl
 clean.sh
@@ -29,5 +27,6 @@ sources/exception.hpp
 sources/work_range.hpp
 sources/source.hpp
 sources/map.hpp
-cl/sweep_up.cl
-cl/sweep_down.cl
+cl/sweep.cl
+sources/init.hpp
+sources/camera.hpp

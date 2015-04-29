@@ -134,13 +134,13 @@ public:
 	}
 	
 	template <typename ... Args>
-	void evaluate(const work_range &range, Args ... args) throw(exception)
+	void evaluate(cl_command_queue queue, const work_range &range, Args ... args) throw(exception)
 	{
 		cl_int ret;
 		unroll_args(this,0,args...);
 		ret = 
 		  clEnqueueNDRangeKernel(
-		    command_queue,kern,
+		    queue,kern,
 		    range.get_dim(),range.get_offset(),
 				range.get_global_size(),range.get_local_size(),
 		    0,NULL,&event

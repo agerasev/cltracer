@@ -103,7 +103,10 @@ int main(int argc, char *argv[])
 	{
 		raySetOri(yaw,pitch);
 	}
-	rayRender();
+	if(rayRender() != 0)
+	{
+		return 1;
+	}
 
 #ifndef PLAYBACK
 	SDL_SetRelativeMouseMode((SDL_bool)mmode);
@@ -279,7 +282,10 @@ int main(int argc, char *argv[])
 		int i;
 		for(i = 0; i < SAMPLES; ++i)
 		{
-			rayRender();
+			if(rayRender() != 0)
+			{
+				return 1;
+			}
 		}
 		if(upd)
 		{

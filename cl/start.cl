@@ -1,15 +1,12 @@
 /* start.cl */
 
-__kernel void start(
-  __global uchar *ray_data, 
-  __constant float *cam_fdata, __global uint *random
-)
+kernel void start(global uchar *ray_data, constant uchar *cam_data, global uint *random)
 {
 	const int2 size = (int2)(get_global_size(0), get_global_size(1));
 	const int2 pos = (int2)(get_global_id(0), get_global_id(1));
 	const float2 cpos = (2.0f*(float2)(pos.x,pos.y) - (float2)(size.x,size.y))/(float)size.y;	
 
-	Camera cam = camera_load(cam_fdata);
+	Camera cam = camera_load(cam_data);
 	
 	Ray ray;
 	ray.origin = pos;

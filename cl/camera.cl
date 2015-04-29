@@ -1,5 +1,6 @@
 /** camera.cl */
-#define CAM_SIZE 27
+
+#define CAM_SIZE (27*sizeof(float))
 
 typedef struct
 {
@@ -12,8 +13,9 @@ typedef struct
 	float dof;
 } Camera;
 
-Camera camera_load(__constant const float *data)
+Camera camera_load(constant const uchar *cam_data)
 {
+	constant const float *data = (constant const float*)cam_data;
 	Camera cam;
 	cam.pos = vload3(0,data);
 	cam.ori[0] = vload3(1,data);

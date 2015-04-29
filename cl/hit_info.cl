@@ -1,35 +1,32 @@
 /** hit_info.cl */
 
-#define HIT_INFO_SIZE 10
+#define HIT_INFO_SIZE (6*sizeof(int))
 
 typedef struct
 {
 	uint size;
 	uint offset;
 	uint2 pre_offset;
-	uint2 pre_offset_tmp;
 	uint2 pre_size;
 }
 HitInfo;
 
-HitInfo hit_info_load(int offset, __global const uint *data)
+HitInfo hit_info_load(int offset, global const uchar *info_data)
 {
 	HitInfo info;
-	__global const uint *info_data = data + HIT_INFO_SIZE*offset;
-	info.size = info_data[0];
-	info.offset = info_data[1];
-	info.pre_size = vload2(1,info_data);
-	info.pre_offset = vload2(2,info_data);
-	info.pre_offset_tmp = vload2(3,info_data);
+	global const uint *data = (global const uint*)(info_data + HIT_INFO_SIZE*offset);
+	info.size = data[0];
+	info.offset = data[1];
+	info.pre_size = vload2(1,data);
+	info.pre_offset = vload2(2,data);
 	return info;
 }
 
-void hit_info_store(HitInfo *info, int offset, __global uint *data)
+void hit_info_store(HitInfo *info, int offset, global uchar *info_data)
 {
-	__global uint *info_data = data + HIT_INFO_SIZE*offset;
-	info_data[0] = info->size;
-	info_data[1] = info->offset;
-	vstore2(info->pre_size,1,info_data);
-	vstore2(info->pre_offset,2,info_data);
-	vstore2(info->pre_offset_tmp,3,info_data);
+	global uint *data = (global uint*)(info_data + HIT_INFO_SIZE*offset);
+	data[0] = info->size;
+	data[1] = info->offset;
+	vstore2(info->pre_size,1,data);
+	vstore2(info->pre_offset,2,data);
 }
