@@ -30,3 +30,4 @@ sources/map.hpp
 cl/sweep.cl
 sources/init.hpp
 sources/camera.hpp
+cl/solve.cl

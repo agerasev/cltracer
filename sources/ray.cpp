@@ -28,6 +28,8 @@ typedef map<kernel*> kernel_map;
 buffer_map buffers;
 kernel_map kernels;
 
+#define PRINT_TIME
+
 void insert_kernel(kernel_map &m, kernel *k)
 {
 	m.insert(k->get_name(),k);
@@ -110,10 +112,11 @@ int rayInit(int w, int h)
 	insert_kernel(kernels,new kernel("intersect"));
 	insert_kernel(kernels,new kernel("produce"));
 	insert_kernel(kernels,new kernel("draw"));
-	insert_kernel(kernels,new kernel("expand"));
+	insert_kernel(kernels,new kernel("clear"));
 	insert_kernel(kernels,new kernel("prepare"));
 	insert_kernel(kernels,new kernel("sweep_up"));
 	insert_kernel(kernels,new kernel("sweep_down"));
+	insert_kernel(kernels,new kernel("expand"));
 	
 	return 0;
 }
@@ -178,8 +181,6 @@ static void __printExecTime(kernel *k)
 {
 	printf("%s exec time: %0.3f ms\n",k->get_name(),(__measureTime(k->get_cl_event())/1000000.0));
 }
-
-//#define PRINT_TIME
 
 int rayRender()
 {
@@ -398,8 +399,13 @@ int rayRender()
 #ifdef RAY_GL
 	clEnqueueReleaseGLObjects(command_queue, 1, &cl_image, 0, 0, 0);
 #endif
-	
 	clFlush(command_queue);
+	
+	kernels["clear"]->evaluate(
+		command_queue,
+	  range2d,
+	  buffers["color_buffer"]
+	);
 	
 	return 0;
 }

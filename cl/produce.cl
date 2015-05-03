@@ -1,10 +1,11 @@
 /** produce.cl */
 
-#define DELTA 1e-8f
+#define DELTA 1e-6f
 
 float3 get_sky_color(float3 dir)
 {
 	return (float3)(0.6f,0.6f,0.8f)*((float3)(dir.z,dir.z,dir.z)*0.5f + (float3)(0.5f,0.5f,0.5f));
+	//return (float3)((int)(10*(dir.x + 1))%2,(int)(10*(dir.y + 1))%2,(int)(10*(dir.z + 1))%2)*(0.5*(dir + (float3)(1,1,1)));
 }
 
 float3 reflect(float3 dir, float3 norm)
@@ -116,4 +117,5 @@ __kernel void produce(
 	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 0, (uint)(0x10000*color.x));
 	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 1, (uint)(0x10000*color.y));
 	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 2, (uint)(0x10000*color.z));
+	//vstore3(convert_uint4(0x10000*color) + vload3(hit.origin.x + hit.origin.y*pitch,color_buffer),hit.origin.x + hit.origin.y*pitch,color_buffer);
 }

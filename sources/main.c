@@ -240,8 +240,8 @@ int main(int argc, char *argv[])
 		if(ws || as || ss || ds || spcs || ctls)
 		{
 			const float spd = 0.1;
-			pos[0] += spd*((ss - ws)*sin(yaw) + (ds - as)*cos(yaw))*cos(pitch);
-			pos[1] += spd*((ws - ss)*cos(yaw) + (ds - as)*sin(yaw))*cos(pitch);
+			pos[0] += spd*((ss - ws)*sin(yaw)*cos(pitch) + (ds - as)*cos(yaw));
+			pos[1] += spd*((ws - ss)*cos(yaw)*cos(pitch) + (ds - as)*sin(yaw));
 			pos[2] += spd*(spcs - ctls) + spd*(ws - ss)*sin(pitch);
 			upd = 1;
 		}
