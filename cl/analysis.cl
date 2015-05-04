@@ -107,6 +107,7 @@ int solve1(const float3 vert[3], float3 pos, float3 dir, float *tp, float3 *cp, 
 {
 	matrix3 m = get_zmat(dir);
 	const float3 v[3] = {mvmul3(m,vert[0] - pos),mvmul3(m,vert[1] - pos),mvmul3(m,vert[2] - pos)};
+	
 	float3 c;
 	c.y = (v[2].x*(v[0].y - v[2].y) - v[2].y*(v[0].x - v[2].x))/
 	  ((v[0].x - v[2].x)*(v[1].y - v[2].y) - (v[1].x - v[2].x)*(v[0].y - v[2].y));

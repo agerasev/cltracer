@@ -33,4 +33,7 @@ sources/camera.hpp
 cl/geometry.cl
 cl/solve.cl
 cl/analysis.cl
+<<<<<<< HEAD
 cl/matrix.cl
+=======
+>>>>>>> 1ec0c58f56dea5895cb0f311b7889367c5c7c4cc
