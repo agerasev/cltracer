@@ -30,4 +30,7 @@ sources/map.hpp
 cl/sweep.cl
 sources/init.hpp
 sources/camera.hpp
+cl/geometry.cl
 cl/solve.cl
+cl/analysis.cl
+cl/matrix.cl

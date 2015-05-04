@@ -55,7 +55,7 @@ __kernel void produce(
 		return;
 	}
 	
-	const float3 diff[4] = {{0.0f,0.0f,0.6f},{0.2f,0.2f,0.0f},{0.0f,1.0f,0.0f},{0.0f,0.0f,0.0f}};
+	const float3 diff[4] = {{0.2f,0.2f,0.6f},{0.2f,0.2f,0.0f},{0.0f,1.0f,0.0f},{0.0f,0.0f,0.0f}};
 	const float3 refl[4] = {{0.4f,0.4f,0.4f},{0.8f,0.8f,0.2f},{0.0f,0.0f,0.0f},{0.8f,0.8f,0.8f}};
 	const float3 glow[4] = {{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{3.2f,3.2f,2.4f}};
 	

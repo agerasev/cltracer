@@ -28,7 +28,7 @@ typedef map<kernel*> kernel_map;
 buffer_map buffers;
 kernel_map kernels;
 
-#define PRINT_TIME
+//#define PRINT_TIME
 
 void insert_kernel(kernel_map &m, kernel *k)
 {
