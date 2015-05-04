@@ -210,7 +210,6 @@ int   SolveP4(float *x,float a,float b,float c,float d) {	// solve equation x^4 
 	else if (res==2) { x[0]-= a/4; x[1]-= a/4; x[2]-= a/4; }
 	else             { x[0]-= a/4; x[2]-= a/4; }
 	// one Newton step for each real root:
-	/*
 	if( res>0 )
 	{
 		x[0] = N4Step(x[0], a,b,c,d);
@@ -221,6 +220,5 @@ int   SolveP4(float *x,float a,float b,float c,float d) {	// solve equation x^4 
 		x[2] = N4Step(x[2], a,b,c,d);
 		x[3] = N4Step(x[3], a,b,c,d);
 	}
-	*/
 	return res;
 }
