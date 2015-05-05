@@ -1,6 +1,6 @@
 /** produce.cl */
 
-#define DELTA 1e-6f
+#define DELTA 1e-8f
 
 float3 get_sky_color(float3 dir)
 {

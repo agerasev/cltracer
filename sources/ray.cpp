@@ -185,7 +185,7 @@ static void __printExecTime(kernel *k)
 int rayRender()
 {
 	// Create buffers
-	float cam_array[CAM_SIZE] =
+	float cam_array[CAM_SIZE/sizeof(float)] =
 	{
 	  cam_pos[0], cam_pos[1], cam_pos[2],
 	  cam_ori[0], cam_ori[1], cam_ori[2],
@@ -220,8 +220,8 @@ int rayRender()
 	unsigned int ray_count = width*height;
 	unsigned int rc2[2] = {ray_count,0};
 	
-	uint sdr = (1 - samples)*(1 - (int)samples > 0);
-	int depth = 4 - sdr;
+	uint sdr = 0;//(1 - samples)*(1 - (int)samples > 0);
+	int depth = 3 - sdr;
 	for(int i = 0; i < depth; ++i)
 	{
 		work_range range1d = {ray_count};
@@ -315,20 +315,23 @@ int rayRender()
 				mfactor = (buffer_size - rc2[0])/rc2[1];
 				unsigned mdif = 1;
 				unsigned shift = (2 - samples)*(2 - (int)samples > 0);
+				/*
 				switch(i)
 				{
 				case 0:
-					mdif = 8>>shift;
-					break;
-				case 1:
 					mdif = 4>>shift;
 					break;
-				case 2:
+				case 1:
 					mdif = 2>>shift;
 					break;
 				default:
 					mdif = 1>>shift;
 					break;
+				}
+				*/
+				if(mdif <= 0)
+				{
+					mdif = 1;
 				}
 				if(mfactor > mdif)
 				{

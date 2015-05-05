@@ -5,7 +5,7 @@
 #define HIT_SIZE (12*sizeof(float) + 3*sizeof(int))
 #define HIT_INFO_SIZE (6*sizeof(int))
 
-#define MAX_CHILD_RAYS 2
+#define MAX_CHILD_RAYS 4
 
 static cl_platform_id platform_id = 0;
 static cl_device_id device_id = 0;
@@ -37,7 +37,7 @@ static float cam_pre_ori[9] =
   0,1,0
 };
 static float cam_fov = 1.0f;
-static float cam_rad = 0.01f;
+static float cam_rad = 0.0f;
 static float cam_dof = 4.0f;
 
 static unsigned long samples = 0;

@@ -1,66 +1,50 @@
 /** intersect.cl */
 
-matrix3 get_zmat3(float3 z)
+int _test2(float2 p0, float2 p1, float2 lp, float2 hp)
 {
-	matrix3 m;
-	float3 x = normalize(cross((fabs(z.z) < 0.7)*(float3)(0,-1,1) + (float3)(0,1,0),z));
-	float3 y = cross(z,x);
-	m.m[0] = x;
-	m.m[1] = y;
-	m.m[2] = z;
-	return m;
+	float t0,t1,r0,r1;
+	
+	// y line test
+	t0 = (lp.x - p0.x)/(p1.x - p0.x);
+	t1 = (hp.x - p0.x)/(p1.x - p0.x);
+	if((t0 <= 0 && t1 <= 0) || (t0 >= 1 && t1 >= 1))
+		return 0;
+	//t0 = fclamp(t0,0,1);
+	//t1 = fclamp(t1,0,1);
+	r0 = p0.y*(1-t0) + p1.y*t0;
+	r1 = p1.y*(1-t1) + p1.y*t1;
+	if((r0 <= lp.y && r1 <= lp.y) || (r0 >= hp.y && r1 >= hp.y))
+		return 0;
+	
+	return 1;
 }
 
-int collide(const float3 v[10], const float3 r[2], float *tp, float3 *cp, float3 *np)
+int _test3v(float3 p, float3 d, float3 v[], int n)
 {
-	matrix3 m, im;
-	m = get_zmat3(r[1]);
-	im = invert3(m);
-	
-	float3 nv[10];
+	// object bounds
+	float3 hp = v[0], lp = v[0];
+	int i;
+	for(i = 0; i < n; ++i)
 	{
-		int i;
-		for(i = 0; i < 10; ++i)
-		{
-			nv[i] = mvmul3(m,v[i] - r[0]);
-		}
-	}
-		
-	float3 nr[2] = {{0,0,0},{0,0,1}};
-	
-	float t;
-	float3 c,n;
-	int rv = intersect_bicubic_surface(nv,nr,&t,&c,&n);
-	
-	// perform neuton method
-	if(rv)
-	{
-		int i;
-		float3 p;
-		float3 d[2];
-		for(i = 0; i < 0x10; ++i)
-		{
-			p = get_bicubic_point(nv,c);
-			get_bicubic_jacobian(nv,c,d);
-			matrix2 j;
-			j.m[0] = d[0].xy;
-			j.m[1] = d[1].xy;
-			c.xy = c.xy - mvmul2(invert2(j),p.xy);
-			c.z = 1 - c.x - c.y;
-		}
-		// t = get_bicubic_point(nv,c).z;
-		get_bicubic_jacobian(nv,c,d);
-		n = normalize(cross(d[0],d[1]));
-		if(n.z > 0)
-		{
-			n = -n;
-		}
+		//hp = fmax(v[i],hp);
+		//lp = fmin(v[i],lp);
 	}
 	
-	*tp = t;
-	*cp = c;
-	*np = mvmul3(im,n);
-	return rv;
+	hp -= p;
+	lp -= p;
+	
+	float t0,t1;
+	// yz plane test
+	t0 = lp.x/d.x;
+	t1 = hp.x/d.x;
+	if(t0 < 0 && t1 < 0)
+		return 0;
+	//t0 = fmax(t0,0);
+	//t1 = fmax(t1,0);
+	if(!_test2(d.yz*t0,d.yz*t1,lp.yz,hp.yz))
+		return 0;
+	
+	return 1;
 }
 
 kernel void intersect(
@@ -81,11 +65,13 @@ kernel void intersect(
 	int hit_obj = 0;
 	float3 hit_pos, hit_norm;
 	
+	const uint2 mat[4] = {{1,1},{1,1},{0,1},{0,0}};
+	const float osf[4] = {1,0.1,64,0.1};
+	
 	// Collide with uniform sphere
 	/*
 	const float3 sph_pos[4] = {(float3)(0.0f,4.0f,0.0f),(float3)(1.0f,1.0f,0.0f),(float3)(0.0f,2.0f,-4.0f),(float3)(-2.0f,2.0f,1.0f)};
 	const float sph_rad[4] = {1.0f,0.8f,3.2f,0.4f};
-	const uint2 sph_mat[4] = {{1,1},{1,1},{0,1},{0,0}};
 	
 	int i;
 	float min_dist;
@@ -110,29 +96,37 @@ kernel void intersect(
 	}
 	*/
 	
-	float3 a[6] = {
-	  {0.0,-1.0,0.0},{sqrt(3.0)/2.0,0.5,0.0},{-sqrt(3.0)/2.0,0.5,0.0},
-	  {sqrt(3.0)/2.0,-0.5,2.0},{0.0,1.0,2.0},{-sqrt(3.0)/2.0,-0.5,2.0}
-	};
-	
-	float3 b[10] = {
-	  {0.0,-1.0,0.0},{sqrt(3.0)/2.0,0.5,0.0},{-sqrt(3.0)/2.0,0.5,0.0}, // xxx,yyy,zzz
-	  {sqrt(3.0)/2.0,-0.5,1.0},{sqrt(3.0)/2.0,-0.5,-1.0}, // xxy,yyx
-	  {0.0,1.0,1.0},{0.0,1.0,-1.0}, // yyz, zzy
-	  {-sqrt(3.0)/2.0,-0.5,1.0},{-sqrt(3.0)/2.0,-0.5,-1.0}, // zzx,xxz
-	  {0.0,0.0,0.0}
+	float3 coord[4*6] = {
+	  {0.0,-1.0,-2.0},{sqrt(3.0)/2.0,0.5,-2.0},{-sqrt(3.0)/2.0,0.5,-2.0},
+	  {sqrt(3.0)/2.0,-0.5,0.0},{0.0,1.0,0.0},{-sqrt(3.0)/2.0,-0.5,0.0},
+	  {0,1,-2},{sqrt(3.0)/2,2.5,-1},{-sqrt(3.0)/2,2.5,-1},
+	  {sqrt(3.0)/2,1.5,-1},{0,3,-2},{-sqrt(3.0)/2,1.5,-1},
+	  {0,-4,-3},{2*sqrt(3.0),2,-3},{-2*sqrt(3.0),2,-3},
+	  {2*sqrt(3.0),-2,-1},{0,4,-1},{-2*sqrt(3.0),-2,-1},
+	  {0.0,-0.5,2.0},{sqrt(3.0)/4.0,0.25,2.0},{-sqrt(3.0)/4.0,0.25,2.0},
+	  {sqrt(3.0)/4.0,-0.25,1.5},{0.0,0.5,1.5},{-sqrt(3.0)/4.0,-0.25,1.5},
 	};
 	
 	hit_obj = 0;
-	float t;
-	float3 n,c;
+	int i;
+	float mt;
 	float3 r[2] = {ray.pos,ray.dir};
-	if(solve2(a,ray.pos,ray.dir,&t,&c,&n)) //collide(b,r,&t,&c,&n)
+	for(i = 0; i < 4; ++i)
 	{
-			hit_obj = 2;
-			hit_pos = ray.pos + ray.dir*t;
-			hit_norm = n;
+		float t;
+		float3 n,c;
+		if(solve2(coord + 6*i,osf[i],ray.pos,ray.dir,&t,&c,&n))
+		{
+			if(hit_obj == 0 || t < mt)
+			{
+				mt = t;
+				hit_pos = ray.pos + ray.dir*t;
+				hit_obj = i + 1;
+				hit_norm = n;
+			}
+		}
 	}
+	
 	
 	Hit hit;
 	hit.pos = hit_pos;
@@ -151,8 +145,8 @@ kernel void intersect(
 	info.pre_size.y = 0;
 	if(hit_obj)
 	{
-		info.pre_size.x = 1;//sph_mat[hit_obj-1].x;
-		info.pre_size.y = 1;//sph_mat[hit_obj-1].y;
+		info.pre_size.x = mat[hit_obj-1].x;
+		info.pre_size.y = mat[hit_obj-1].y;
 	}
 	info.pre_offset.x = info.pre_size.x;
 	info.pre_offset.y = info.pre_size.y;

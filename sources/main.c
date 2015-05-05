@@ -29,7 +29,7 @@ static SDL_GLContext sdl_glcontext = NULL;
 
 static float yaw = 0.0f, pitch = 0.0f;
 static float pos[3] = {0.0f,0.0f,0.0f};
-static float fov = 0.5f, rad = 0.0f, dof = 4.0f;
+static float fov = 0.5f, rad = 0.01f, dof = 4.0f;
 
 int main(int argc, char *argv[])
 {
@@ -100,9 +100,7 @@ int main(int argc, char *argv[])
 	raySetPos(pos);
 	raySetFov(fov);
 	raySetDof(rad,dof);
-	{
-		raySetOri(yaw,pitch);
-	}
+	raySetOri(yaw,pitch);
 	if(rayRender() != 0)
 	{
 		return 1;
