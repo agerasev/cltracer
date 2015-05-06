@@ -33,3 +33,4 @@ sources/camera.hpp
 cl/analysis.cl
 cl/matrix.cl
 cl/gsl_solver.cl
+cl/utility.cl

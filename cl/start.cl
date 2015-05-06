@@ -30,6 +30,7 @@ kernel void start(global uchar *ray_data, constant uchar *cam_data, global uint 
 	ray.pos = cam_pos + cam.rad*(cam_ori[0]*lens.x + cam_ori[1]*lens.y);
 	ray.dir = normalize(cam.dof*(cam_ori[2] + cam.fov*(cam_ori[0]*cpos.x + cam_ori[1]*cpos.y)) + cam_pos - ray.pos);
 	ray.color = (float3)(1.0f,1.0f,1.0f);
+	ray.source = 0;
 	
 	random[size.x*pos.y + pos.x] = seed;
 	ray_store(&ray, size.x*pos.y + pos.x, ray_data);

@@ -1,6 +1,7 @@
 #!/bin/sh
 
 > kernel.cl
+cat utility.cl    >> kernel.cl
 cat camera.cl     >> kernel.cl
 cat ray.cl        >> kernel.cl
 cat hit.cl        >> kernel.cl

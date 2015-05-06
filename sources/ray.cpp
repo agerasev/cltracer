@@ -68,8 +68,9 @@ int rayInit(int w, int h)
 	buffers.insert("accum_buffer", new buffer_object(sizeof(float)*3*screen_size));
 	buffers.insert("hit_info",     new buffer_object(HIT_INFO_SIZE*buffer_size));
 	buffers.insert("scan_buf",     new buffer_object(2*sizeof(int)*buffer_size));
-	buffers.insert("cl_ray_count", new buffer_object(3*sizeof(int)));
-	buffers.insert("cl_random",    new buffer_object(sizeof(int)*buffer_size));
+	buffers.insert("ray_count",    new buffer_object(3*sizeof(int)));
+	buffers.insert("random",       new buffer_object(sizeof(int)*buffer_size));
+	buffers.insert("shapes",       new buffer_object(SHAPE_BUFFER_SIZE));
 	
 	unsigned seed = 0;
 	unsigned *random_buffer = (unsigned*)malloc(sizeof(unsigned)*buffer_size);
@@ -78,7 +79,7 @@ int rayInit(int w, int h)
 		random_buffer[i] = (seed = 3942082377*seed + 1234567);
 	}
 	
-	clEnqueueWriteBuffer(command_queue,buffers["cl_random"]->get_cl_mem(),CL_TRUE,0,sizeof(unsigned int)*buffer_size,random_buffer,0,NULL,NULL);
+	clEnqueueWriteBuffer(command_queue,buffers["random"]->get_cl_mem(),CL_TRUE,0,sizeof(unsigned int)*buffer_size,random_buffer,0,NULL,NULL);
 	clFlush(command_queue);
 	free(random_buffer);
 	
@@ -90,6 +91,19 @@ int rayInit(int w, int h)
 	clEnqueueWriteBuffer(command_queue,buffers["accum_buffer"]->get_cl_mem(),CL_TRUE,0,sizeof(float)*3*screen_size,accum_buffer_data,0,NULL,NULL);
 	clFlush(command_queue);
 	free(accum_buffer_data);
+	
+	const float shape_coord[4*6*3] = {
+	  0.0,-1.0,-2.0,sqrt(3.0)/2.0,0.5,-2.0,-sqrt(3.0)/2.0,0.5,-2.0,
+	  sqrt(3.0)/2.0,-0.5,0.0,0.0,1.0,0.0,-sqrt(3.0)/2.0,-0.5,0.0,
+	  0,1,-2,sqrt(3.0)/2,2.5,-1,-sqrt(3.0)/2,2.5,-1,
+	  sqrt(3.0)/2,1.5,-1,0,3,-2,-sqrt(3.0)/2,1.5,-1,
+	  0,-4,-3,2*sqrt(3.0),2,-3,-2*sqrt(3.0),2,-3,
+	  2*sqrt(3.0),-2,-1,0,4,-1,-2*sqrt(3.0),-2,-1,
+	  0.0,-0.5,2.0,sqrt(3.0)/4.0,0.25,2.0,-sqrt(3.0)/4.0,0.25,2.0,
+	  sqrt(3.0)/4.0,-0.25,1.5,0.0,0.5,1.5,-sqrt(3.0)/4.0,-0.25,1.5
+	};
+	clEnqueueWriteBuffer(command_queue,buffers["shapes"]->get_cl_mem(),CL_TRUE,0,sizeof(float)*4*6*3,shape_coord,0,NULL,NULL);
+	clFlush(command_queue);
 	
 	// Create a program from the kernel source
 	size_t source_size;
@@ -210,7 +224,7 @@ int rayRender()
 	  range2d,
 	  buffers["ray_data"],
 	  buffers["cam_fdata"],
-	  buffers["cl_random"]
+	  buffers["random"]
 	);
 #ifdef PRINT_TIME
 	__printExecTime(kernels["start"]);
@@ -232,6 +246,7 @@ int rayRender()
 		kernels["intersect"]->evaluate(
 			command_queue,
 		  range1d,
+			buffers["shapes"],
 		  buffers["ray_data"],
 		  buffers["hit_data"],
 		  buffers["hit_info"],
@@ -276,7 +291,7 @@ int rayRender()
 					command_queue,
 					range1d_pow2,
 					scan_buf,
-					buffers["cl_ray_count"],
+					buffers["ray_count"],
 					int(dev),
 					int(work_size_pow2)
 				);
@@ -306,8 +321,8 @@ int rayRender()
 				clFlush(command_queue);
 			}
 			
-			buffers["cl_ray_count"]->load_data(command_queue,&ray_count,sizeof(int));
-			buffers["cl_ray_count"]->load_data(command_queue,rc2,sizeof(int),2*sizeof(int));
+			buffers["ray_count"]->load_data(command_queue,&ray_count,sizeof(int));
+			buffers["ray_count"]->load_data(command_queue,rc2,sizeof(int),2*sizeof(int));
 			
 			unsigned int mfactor = 0;
 			if(rc2[1] != 0)
@@ -367,7 +382,7 @@ int rayRender()
 		  buffers["color_buffer"],
 		  int(width),
 		  int(work_size),
-		  buffers["cl_random"]
+		  buffers["random"]
 		);
 #ifdef PRINT_TIME
 		__printExecTime(kernels["produce"]);

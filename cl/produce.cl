@@ -1,6 +1,6 @@
 /** produce.cl */
 
-#define DELTA 1e-8f
+#define DELTA 1e-6f
 
 float3 get_sky_color(float3 dir)
 {
@@ -83,6 +83,7 @@ __kernel void produce(
 		ray.pos = hit.pos + hit.norm*DELTA;
 		
 		ray.origin = hit.origin;
+		ray.source = hit.object;
 		
 		uint count = 0;
 		

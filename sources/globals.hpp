@@ -1,10 +1,12 @@
 #pragma once
 
 #define CAM_SIZE (27*sizeof(float))
-#define RAY_SIZE (9*sizeof(float) + 2*sizeof(int))
+#define RAY_SIZE (9*sizeof(float) + 3*sizeof(int))
 #define HIT_SIZE (12*sizeof(float) + 3*sizeof(int))
 #define HIT_INFO_SIZE (6*sizeof(int))
+#define SHAPE_SIZE 6*3*sizeof(float)
 
+#define SHAPE_BUFFER_SIZE 4*SHAPE_SIZE
 #define MAX_CHILD_RAYS 4
 
 static cl_platform_id platform_id = 0;
