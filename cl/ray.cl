@@ -16,12 +16,12 @@ typedef struct
 } 
 Ray;
 
-Ray ray_load(int offset, __global const uchar *ray_data)
+Ray ray_load(int offset, global const uchar *ray_data)
 {
 	Ray ray;
-	__global const uchar *data = ray_data + offset*RAY_SIZE;
-	__global const float *fdata = (__global const float*)(data + RAY_FOFFSET);
-	__global const int *idata = (__global const int*)(data + RAY_IOFFSET);
+	global const uchar *data = ray_data + offset*RAY_SIZE;
+	global const float *fdata = (global const float*)(data + RAY_FOFFSET);
+	global const int *idata = (global const int*)(data + RAY_IOFFSET);
 	ray.pos = vload3(0,fdata);
 	ray.dir = vload3(1,fdata);
 	ray.color = vload3(2,fdata);
@@ -30,11 +30,11 @@ Ray ray_load(int offset, __global const uchar *ray_data)
 	return ray;
 }
 
-void ray_store(Ray *ray, int offset, __global uchar *ray_data)
+void ray_store(Ray *ray, int offset, global uchar *ray_data)
 {
-	__global uchar *data = ray_data + offset*RAY_SIZE;
-	__global float *fdata = (__global float*)(data + RAY_FOFFSET);
-	__global int *idata = (__global int*)(data + RAY_IOFFSET);
+	global uchar *data = ray_data + offset*RAY_SIZE;
+	global float *fdata = (global float*)(data + RAY_FOFFSET);
+	global int *idata = (global int*)(data + RAY_IOFFSET);
 	vstore3(ray->pos,0,fdata);
 	vstore3(ray->dir,1,fdata);
 	vstore3(ray->color,2,fdata);

@@ -101,6 +101,7 @@ int main(int argc, char *argv[])
 	raySetFov(fov);
 	raySetDof(rad,dof);
 	raySetOri(yaw,pitch);
+	rayUpdateMotion();
 	if(rayRender() != 0)
 	{
 		return 1;

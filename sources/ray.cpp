@@ -13,24 +13,27 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "session.hpp"
 #include "globals.hpp"
 #include "buffer_object.hpp"
 #include "kernel.hpp"
 #include "work_range.hpp"
-#include "source.hpp"
+#include "source.h"
 #include "map.hpp"
 #include "init.hpp"
 #include "camera.hpp"
 
-typedef map<buffer_object*> buffer_map;
-typedef map<kernel*> kernel_map;
+cl::session *session = nullptr;
+
+typedef map<cl::buffer_object*> buffer_map;
+typedef map<cl::kernel*> kernel_map;
 
 buffer_map buffers;
 kernel_map kernels;
 
-//#define PRINT_TIME
+#define PRINT_TIME
 
-void insert_kernel(kernel_map &m, kernel *k)
+void insert_kernel(kernel_map &m, cl::kernel *k)
 {
 	m.insert(k->get_name(),k);
 }
@@ -50,27 +53,26 @@ int rayInit(int w, int h)
 	width = w;
 	height = h;
 	
-	__get_platform_and_device();
-	context = __get_context();
+	session = new cl::session();
 	
-	// Create a command queue
-	command_queue = clCreateCommandQueue(context, device_id, CL_QUEUE_PROFILING_ENABLE, &err);
+	cl_context context = session->get_context().get_cl_context();
+	cl_command_queue command_queue = session->get_queue().get_cl_command_queue();
 	
-	cl_image = __get_image();
+	cl_image = __get_image(session->get_context().get_cl_context());
 	
 	screen_size = width*height;
 	buffer_size = 1 << ceil_pow2_exp(screen_size*MAX_CHILD_RAYS);
 	
-	buffers.insert("ray_data",     new buffer_object(RAY_SIZE*buffer_size));
-	buffers.insert("hit_data",     new buffer_object(HIT_SIZE*buffer_size));
-	buffers.insert("cam_fdata",    new buffer_object(CAM_SIZE));
-	buffers.insert("color_buffer", new buffer_object(sizeof(int)*3*screen_size));
-	buffers.insert("accum_buffer", new buffer_object(sizeof(float)*3*screen_size));
-	buffers.insert("hit_info",     new buffer_object(HIT_INFO_SIZE*buffer_size));
-	buffers.insert("scan_buf",     new buffer_object(2*sizeof(int)*buffer_size));
-	buffers.insert("ray_count",    new buffer_object(3*sizeof(int)));
-	buffers.insert("random",       new buffer_object(sizeof(int)*buffer_size));
-	buffers.insert("shapes",       new buffer_object(SHAPE_BUFFER_SIZE));
+	buffers.insert("ray_data",     new cl::buffer_object(context,RAY_SIZE*buffer_size));
+	buffers.insert("hit_data",     new cl::buffer_object(context,HIT_SIZE*buffer_size));
+	buffers.insert("cam_fdata",    new cl::buffer_object(context,CAM_SIZE));
+	buffers.insert("color_buffer", new cl::buffer_object(context,sizeof(int)*3*screen_size));
+	buffers.insert("accum_buffer", new cl::buffer_object(context,sizeof(float)*3*screen_size));
+	buffers.insert("hit_info",     new cl::buffer_object(context,HIT_INFO_SIZE*buffer_size));
+	buffers.insert("scan_buf",     new cl::buffer_object(context,2*sizeof(int)*buffer_size));
+	buffers.insert("ray_count",    new cl::buffer_object(context,3*sizeof(int)));
+	buffers.insert("random",       new cl::buffer_object(context,sizeof(int)*buffer_size));
+	buffers.insert("shapes",       new cl::buffer_object(context,SHAPE_BUFFER_SIZE));
 	
 	unsigned seed = 0;
 	unsigned *random_buffer = (unsigned*)malloc(sizeof(unsigned)*buffer_size);
@@ -114,6 +116,7 @@ int rayInit(int w, int h)
 	
 	
 	// Build the program
+	cl_device_id device_id = session->get_device_id();
 	err = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
 	if(err != CL_SUCCESS)
 	{
@@ -122,15 +125,20 @@ int rayInit(int w, int h)
 	}
 	
 	// Create the OpenCL kernel
-	insert_kernel(kernels,new kernel("start"));
-	insert_kernel(kernels,new kernel("intersect"));
-	insert_kernel(kernels,new kernel("produce"));
-	insert_kernel(kernels,new kernel("draw"));
-	insert_kernel(kernels,new kernel("clear"));
-	insert_kernel(kernels,new kernel("prepare"));
-	insert_kernel(kernels,new kernel("sweep_up"));
-	insert_kernel(kernels,new kernel("sweep_down"));
-	insert_kernel(kernels,new kernel("expand"));
+	insert_kernel(kernels,new cl::kernel(program,"start"));
+	insert_kernel(kernels,new cl::kernel(program,"intersect"));
+	insert_kernel(kernels,new cl::kernel(program,"produce"));
+	insert_kernel(kernels,new cl::kernel(program,"draw"));
+	insert_kernel(kernels,new cl::kernel(program,"clear"));
+	insert_kernel(kernels,new cl::kernel(program,"prepare"));
+	insert_kernel(kernels,new cl::kernel(program,"sweep_up"));
+	insert_kernel(kernels,new cl::kernel(program,"sweep_down"));
+	insert_kernel(kernels,new cl::kernel(program,"expand"));
+	
+	for(std::pair<const std::string,cl::kernel *> &p : kernels)
+	{
+		p.second->bind_queue(session->get_queue());
+	}
 	
 	return 0;
 }
@@ -138,8 +146,7 @@ int rayInit(int w, int h)
 void rayDispose()
 {
 	// cl_uint err;
-	clFlush(command_queue);
-	clFinish(command_queue);
+	session->get_queue().flush();
 	
 	for(auto pair : kernels)
 	{
@@ -154,8 +161,8 @@ void rayDispose()
 	}
 	clReleaseMemObject(cl_image);
 	
-	clReleaseCommandQueue(command_queue);
-	clReleaseContext(context);
+	delete session;
+	
 	glDeleteTextures(1,&gl_texture_id);
 }
 
@@ -181,23 +188,15 @@ void rayUpdateMotion()
 	rayClear();
 }
 
-static cl_ulong __measureTime(cl_event event)
+static void __printExecTime(cl::kernel *k)
 {
-	cl_ulong time_start, time_end;
-	
-	clWaitForEvents(1,&event);
-	clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-	clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
-	return time_end - time_start;
-}
-
-static void __printExecTime(kernel *k)
-{
-	printf("%s exec time: %0.3f ms\n",k->get_name(),(__measureTime(k->get_cl_event())/1000000.0));
+	printf("%s exec time: %0.3f ms\n",k->get_name(),k->measure_time()/1000000.0);
 }
 
 int rayRender()
 {
+	cl_command_queue command_queue = session->get_queue().get_cl_command_queue();
+	
 	// Create buffers
 	float cam_array[CAM_SIZE/sizeof(float)] =
 	{
@@ -213,14 +212,13 @@ int rayRender()
 	};
 	buffers["cam_fdata"]->store_data(command_queue,cam_array);
 	
-	work_range range2d = {width,height};
+	cl::work_range range2d = {width,height};
 	size_t work_size;
 	//size_t global_work_size[2] = {width,height};
 	//size_t local_work_size[2] = {8,8};
 	
 	// start
 	kernels["start"]->evaluate(
-		command_queue,
 	  range2d,
 	  buffers["ray_data"],
 	  buffers["cam_fdata"],
@@ -238,13 +236,12 @@ int rayRender()
 	int depth = 3 - sdr;
 	for(int i = 0; i < depth; ++i)
 	{
-		work_range range1d = {ray_count};
+		cl::work_range range1d = {ray_count};
 		
 		work_size = ray_count;
 		
 		// intersect
 		kernels["intersect"]->evaluate(
-			command_queue,
 		  range1d,
 			buffers["shapes"],
 		  buffers["ray_data"],
@@ -261,16 +258,15 @@ int rayRender()
 		{
 			int dev;
 			
-			buffer_object *scan_buf = buffers["scan_buf"];
+			cl::buffer_object *scan_buf = buffers["scan_buf"];
 			
 			dev = 0;
 			int pow2_exp = ceil_pow2_exp(ray_count);
 			unsigned int work_size_pow2 = 1 << pow2_exp;
 			
-			work_range range1d_pow2 = {work_size_pow2};
+			cl::work_range range1d_pow2 = {work_size_pow2};
 			
 			kernels["prepare"]->evaluate(
-				command_queue,
 				range1d_pow2,
 				buffers["hit_info"],
 				scan_buf,
@@ -288,7 +284,6 @@ int rayRender()
 				range1d_pow2 = {1u << (pow2_exp - dev - 1)};
 				
 				kernels["sweep_up"]->evaluate(
-					command_queue,
 					range1d_pow2,
 					scan_buf,
 					buffers["ray_count"],
@@ -309,7 +304,6 @@ int rayRender()
 				range1d_pow2 = {1u << (pow2_exp - dev - 1)};
 				
 				kernels["sweep_down"]->evaluate(
-					command_queue,
 					range1d_pow2,
 					scan_buf,
 					int(dev),
@@ -329,8 +323,8 @@ int rayRender()
 			{
 				mfactor = (buffer_size - rc2[0])/rc2[1];
 				unsigned mdif = 1;
-				unsigned shift = (2 - samples)*(2 - (int)samples > 0);
 				/*
+				unsigned shift = (2 - samples)*(2 - (int)samples > 0);
 				switch(i)
 				{
 				case 0:
@@ -356,7 +350,6 @@ int rayRender()
 			ray_count = rc2[0] + mfactor*rc2[1];
 			
 			kernels["expand"]->evaluate(
-				command_queue,
 				range1d,
 				buffers["hit_info"],
 				scan_buf,
@@ -374,7 +367,6 @@ int rayRender()
 		
 		// produce
 		kernels["produce"]->evaluate(
-			command_queue,
 		  range1d,
 		  buffers["hit_data"],
 		  buffers["ray_data"],
@@ -404,7 +396,6 @@ int rayRender()
 #endif
 	
 	kernels["draw"]->evaluate(
-		command_queue,
 	  range2d,
 	  buffers["color_buffer"],
 	  buffers["accum_buffer"],
@@ -420,7 +411,6 @@ int rayRender()
 	clFlush(command_queue);
 	
 	kernels["clear"]->evaluate(
-		command_queue,
 	  range2d,
 	  buffers["color_buffer"]
 	);
