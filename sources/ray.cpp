@@ -15,28 +15,40 @@
 
 #include "session.hpp"
 #include "globals.hpp"
+#include "program.hpp"
 #include "buffer_object.hpp"
 #include "kernel.hpp"
 #include "work_range.hpp"
-#include "source.h"
 #include "map.hpp"
-#include "init.hpp"
 #include "camera.hpp"
+#include "gl_image_object.hpp"
+
+#define CAM_SIZE (27*sizeof(float))
+#define RAY_SIZE (9*sizeof(float) + 3*sizeof(int))
+#define HIT_SIZE (12*sizeof(float) + 3*sizeof(int))
+#define HIT_INFO_SIZE (6*sizeof(int))
+#define SHAPE_SIZE 6*3*sizeof(float)
+
+#define SHAPE_BUFFER_SIZE 4*SHAPE_SIZE
+#define MAX_CHILD_RAYS 2
+
+static unsigned int width, height;
+
+static unsigned long samples = 0;
+
+size_t screen_size;
+size_t buffer_size;
 
 cl::session *session = nullptr;
+cl::gl_image_object *image = nullptr;
+cl::queue *queue = nullptr;
+cl::program *program = nullptr;
 
-typedef map<cl::buffer_object*> buffer_map;
-typedef map<cl::kernel*> kernel_map;
+typedef cl::map<cl::buffer_object*> buffer_map;
+typedef cl::map<cl::kernel*> kernel_map;
 
 buffer_map buffers;
-kernel_map kernels;
-
-#define PRINT_TIME
-
-void insert_kernel(kernel_map &m, cl::kernel *k)
-{
-	m.insert(k->get_name(),k);
-}
+cl::map<cl::kernel*> *kernels;
 
 static unsigned ceil_pow2_exp(unsigned num)
 {
@@ -54,11 +66,11 @@ int rayInit(int w, int h)
 	height = h;
 	
 	session = new cl::session();
+	image = new cl::gl_image_object(session->get_context());
+	queue = &session->get_queue();
+	image->bind_queue(queue->get_cl_command_queue());
 	
 	cl_context context = session->get_context().get_cl_context();
-	cl_command_queue command_queue = session->get_queue().get_cl_command_queue();
-	
-	cl_image = __get_image(session->get_context().get_cl_context());
 	
 	screen_size = width*height;
 	buffer_size = 1 << ceil_pow2_exp(screen_size*MAX_CHILD_RAYS);
@@ -74,6 +86,9 @@ int rayInit(int w, int h)
 	buffers.insert("random",       new cl::buffer_object(context,sizeof(int)*buffer_size));
 	buffers.insert("shapes",       new cl::buffer_object(context,SHAPE_BUFFER_SIZE));
 	
+	for(cl::buffer_object *bo : buffers)
+		bo->bind_queue(queue->get_cl_command_queue());
+	
 	unsigned seed = 0;
 	unsigned *random_buffer = (unsigned*)malloc(sizeof(unsigned)*buffer_size);
 	for(i = 0; i < int(buffer_size); ++i)
@@ -81,8 +96,8 @@ int rayInit(int w, int h)
 		random_buffer[i] = (seed = 3942082377*seed + 1234567);
 	}
 	
-	clEnqueueWriteBuffer(command_queue,buffers["random"]->get_cl_mem(),CL_TRUE,0,sizeof(unsigned int)*buffer_size,random_buffer,0,NULL,NULL);
-	clFlush(command_queue);
+	buffers["random"]->store_data(random_buffer,buffer_size);
+	queue->flush();
 	free(random_buffer);
 	
 	float *accum_buffer_data = (float*)malloc(sizeof(float)*3*screen_size);
@@ -90,8 +105,8 @@ int rayInit(int w, int h)
 	{
 		accum_buffer_data[i] = 0.0f;
 	}
-	clEnqueueWriteBuffer(command_queue,buffers["accum_buffer"]->get_cl_mem(),CL_TRUE,0,sizeof(float)*3*screen_size,accum_buffer_data,0,NULL,NULL);
-	clFlush(command_queue);
+	buffers["accum_buffer"]->store_data(accum_buffer_data,3*screen_size);
+	queue->flush();
 	free(accum_buffer_data);
 	
 	const float shape_coord[4*6*3] = {
@@ -104,40 +119,16 @@ int rayInit(int w, int h)
 	  0.0,-0.5,2.0,sqrt(3.0)/4.0,0.25,2.0,-sqrt(3.0)/4.0,0.25,2.0,
 	  sqrt(3.0)/4.0,-0.25,1.5,0.0,0.5,1.5,-sqrt(3.0)/4.0,-0.25,1.5
 	};
-	clEnqueueWriteBuffer(command_queue,buffers["shapes"]->get_cl_mem(),CL_TRUE,0,sizeof(float)*4*6*3,shape_coord,0,NULL,NULL);
-	clFlush(command_queue);
+	buffers["shapes"]->store_data(shape_coord,4*6*3);
+	queue->flush();
 	
 	// Create a program from the kernel source
-	size_t source_size;
-	char *source = __loadSource("cl/kernel.cl",&source_size);;
-	program = clCreateProgramWithSource(context, 1, (const char **)&source, (const size_t *)&source_size, &err);
-	if(err != CL_SUCCESS) {fprintf(stderr,"clCreateProgramWithSource: failed\n"); return -3;}
-	__freeSource(source);
+	program = new cl::program("cl/kernel.cl",session->get_context().get_cl_context(),session->get_device_id());
+	kernels = &program->get_kernel_map();
 	
-	
-	// Build the program
-	cl_device_id device_id = session->get_device_id();
-	err = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
-	if(err != CL_SUCCESS)
+	for(cl::kernel *k : (*kernels))
 	{
-		__printKernelCompilationInfo(program,device_id);
-		return -1;
-	}
-	
-	// Create the OpenCL kernel
-	insert_kernel(kernels,new cl::kernel(program,"start"));
-	insert_kernel(kernels,new cl::kernel(program,"intersect"));
-	insert_kernel(kernels,new cl::kernel(program,"produce"));
-	insert_kernel(kernels,new cl::kernel(program,"draw"));
-	insert_kernel(kernels,new cl::kernel(program,"clear"));
-	insert_kernel(kernels,new cl::kernel(program,"prepare"));
-	insert_kernel(kernels,new cl::kernel(program,"sweep_up"));
-	insert_kernel(kernels,new cl::kernel(program,"sweep_down"));
-	insert_kernel(kernels,new cl::kernel(program,"expand"));
-	
-	for(std::pair<const std::string,cl::kernel *> &p : kernels)
-	{
-		p.second->bind_queue(session->get_queue());
+		k->bind_queue(session->get_queue());
 	}
 	
 	return 0;
@@ -148,22 +139,20 @@ void rayDispose()
 	// cl_uint err;
 	session->get_queue().flush();
 	
-	for(auto pair : kernels)
+	for(cl::kernel *k : (*kernels))
 	{
-		delete pair.second;
+		delete k;
 	}
 	
-	clReleaseProgram(program);
+	delete program;
 	
-	for(auto pair : buffers)
+	for(cl::buffer_object *bo : buffers)
 	{
-		delete pair.second;
+		delete bo;
 	}
-	clReleaseMemObject(cl_image);
 	
+	delete image;
 	delete session;
-	
-	glDeleteTextures(1,&gl_texture_id);
 }
 
 void rayLoadGeometry(const float *geom, size_t size)
@@ -188,14 +177,8 @@ void rayUpdateMotion()
 	rayClear();
 }
 
-static void __printExecTime(cl::kernel *k)
-{
-	printf("%s exec time: %0.3f ms\n",k->get_name(),k->measure_time()/1000000.0);
-}
-
 int rayRender()
 {
-	cl_command_queue command_queue = session->get_queue().get_cl_command_queue();
 	
 	// Create buffers
 	float cam_array[CAM_SIZE/sizeof(float)] =
@@ -210,7 +193,7 @@ int rayRender()
 	  cam_pre_ori[6], cam_pre_ori[7], cam_pre_ori[8],
 	  cam_fov, cam_rad, cam_dof
 	};
-	buffers["cam_fdata"]->store_data(command_queue,cam_array);
+	buffers["cam_fdata"]->store_data(cam_array);
 	
 	cl::work_range range2d = {width,height};
 	size_t work_size;
@@ -218,16 +201,18 @@ int rayRender()
 	//size_t local_work_size[2] = {8,8};
 	
 	// start
-	kernels["start"]->evaluate(
+	(*kernels)["start"]->evaluate(
 	  range2d,
 	  buffers["ray_data"],
 	  buffers["cam_fdata"],
 	  buffers["random"]
-	);
+	)
 #ifdef PRINT_TIME
-	__printExecTime(kernels["start"]);
+	->print_time()
 #endif // PRINT_TIME
-	clFlush(command_queue);
+	;
+
+	queue->flush();
 	
 	unsigned int ray_count = width*height;
 	unsigned int rc2[2] = {ray_count,0};
@@ -241,18 +226,19 @@ int rayRender()
 		work_size = ray_count;
 		
 		// intersect
-		kernels["intersect"]->evaluate(
+		(*kernels)["intersect"]->evaluate(
 		  range1d,
 			buffers["shapes"],
 		  buffers["ray_data"],
 		  buffers["hit_data"],
 		  buffers["hit_info"],
 		  int(work_size)
-		);
+		)
 #ifdef PRINT_TIME
-		__printExecTime(kernels["intersect"]);
+		->print_time()
 #endif // PRINT_TIME
-		clFlush(command_queue);
+		;
+		queue->flush();
 		
 		if(i < depth - 1)
 		{
@@ -266,34 +252,37 @@ int rayRender()
 			
 			cl::work_range range1d_pow2 = {work_size_pow2};
 			
-			kernels["prepare"]->evaluate(
+			(*kernels)["prepare"]->evaluate(
 				range1d_pow2,
 				buffers["hit_info"],
 				scan_buf,
 				int(work_size),
 				int(work_size_pow2)
-			);
+			)
 #ifdef PRINT_TIME
-			__printExecTime(kernels["prepare"]);
+			->print_time()
 #endif // PRINT_TIME
-			clFlush(command_queue);
+			;
+			
+			queue->flush();
 			
 			// sweep up
 			for(; dev < pow2_exp; ++dev)
 			{
 				range1d_pow2 = {1u << (pow2_exp - dev - 1)};
 				
-				kernels["sweep_up"]->evaluate(
+				(*kernels)["sweep_up"]->evaluate(
 					range1d_pow2,
 					scan_buf,
 					buffers["ray_count"],
 					int(dev),
 					int(work_size_pow2)
-				);
+				)
 #ifdef PRINT_TIME
-				__printExecTime(kernels["sweep_up"]);
+				->print_time()
 #endif // PRINT_TIME
-				clFlush(command_queue);
+				;
+				queue->flush();
 			}
 			
 			--dev;
@@ -303,20 +292,21 @@ int rayRender()
 			{
 				range1d_pow2 = {1u << (pow2_exp - dev - 1)};
 				
-				kernels["sweep_down"]->evaluate(
+				(*kernels)["sweep_down"]->evaluate(
 					range1d_pow2,
 					scan_buf,
 					int(dev),
 					int(work_size_pow2)
-				);
+				)
 #ifdef PRINT_TIME
-				__printExecTime(kernels["sweep_down"]);
+				->print_time()
 #endif // PRINT_TIME
-				clFlush(command_queue);
+				;
+				queue->flush();
 			}
 			
-			buffers["ray_count"]->load_data(command_queue,&ray_count,sizeof(int));
-			buffers["ray_count"]->load_data(command_queue,rc2,sizeof(int),2*sizeof(int));
+			buffers["ray_count"]->load_data(&ray_count,sizeof(int));
+			buffers["ray_count"]->load_data(rc2,sizeof(int),2*sizeof(int));
 			
 			unsigned int mfactor = 0;
 			if(rc2[1] != 0)
@@ -349,24 +339,26 @@ int rayRender()
 			}
 			ray_count = rc2[0] + mfactor*rc2[1];
 			
-			kernels["expand"]->evaluate(
+			(*kernels)["expand"]->evaluate(
 				range1d,
 				buffers["hit_info"],
 				scan_buf,
 				int(mfactor),
 				int(work_size)
-			);
+			)
 #ifdef PRINT_TIME
-			__printExecTime(kernels["expand"]);
+			->print_time()
 #endif // PRINT_TIME
-			clFlush(command_queue);
+			;
+			
+			queue->flush();
 		}
 		
 		// fprintf(stdout,"ray_count: %d, rc2: {%d,%d}\n",ray_count,rc2[0],rc2[1]);
 		// return 0;
 		
 		// produce
-		kernels["produce"]->evaluate(
+		(*kernels)["produce"]->evaluate(
 		  range1d,
 		  buffers["hit_data"],
 		  buffers["ray_data"],
@@ -375,11 +367,13 @@ int rayRender()
 		  int(width),
 		  int(work_size),
 		  buffers["random"]
-		);
+		)
 #ifdef PRINT_TIME
-		__printExecTime(kernels["produce"]);
+		->print_time()
 #endif // PRINT_TIME
-		clFlush(command_queue);
+		;
+		
+		queue->flush();
 		
 		if(ray_count == 0)
 		{
@@ -391,36 +385,35 @@ int rayRender()
 	uint csmp = samples - (samples < 3)*(samples - 1);
 	float mul = 1.0/csmp;
 	
-#ifdef RAY_GL
-	clEnqueueAcquireGLObjects(command_queue, 1, &cl_image, 0, 0, 0);
-#endif
-	
-	kernels["draw"]->evaluate(
+	(*kernels)["draw"]->evaluate(
 	  range2d,
 	  buffers["color_buffer"],
 	  buffers["accum_buffer"],
 	  float(mul),
-	  cl_image
-	);
+	  image
+	)
 #ifdef PRINT_TIME
-	__printExecTime(kernels["draw"]);
+	->print_time()
 #endif // PRINT_TIME
-#ifdef RAY_GL
-	clEnqueueReleaseGLObjects(command_queue, 1, &cl_image, 0, 0, 0);
-#endif
-	clFlush(command_queue);
+	;
 	
-	kernels["clear"]->evaluate(
+	queue->flush();
+	
+	(*kernels)["clear"]->evaluate(
 	  range2d,
 	  buffers["color_buffer"]
-	);
+	)
+#ifdef PRINT_TIME
+	->print_time()
+#endif // PRINT_TIME
+	;
 	
 	return 0;
 }
 
-#ifdef RAY_GL
+#ifdef CL_GL_INTEROP
 GLuint rayGetGLTexture()
 {
-	return gl_texture_id;
+	return image->get_texture();
 }
-#endif
+#endif // CL_GL_INTEROP

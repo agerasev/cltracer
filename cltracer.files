@@ -28,11 +28,8 @@ cl/gsl_solver.cl
 cl/utility.cl
 sources/cl/buffer_object.hpp
 sources/cl/exception.hpp
-sources/cl/globals.hpp
-sources/cl/init.hpp
 sources/cl/kernel.hpp
 sources/cl/map.hpp
-sources/cl/source.h
 sources/cl/utility.hpp
 sources/cl/work_range.hpp
 sources/cl/session.hpp
@@ -41,3 +38,6 @@ sources/cl/context.hpp
 sources/cl/platform.hpp
 sources/cl/gl_context.hpp
 sources/cl/queue.hpp
+sources/cl/image_object.hpp
+sources/cl/gl_image_object.hpp
+sources/cl/program.hpp

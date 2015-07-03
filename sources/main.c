@@ -18,7 +18,7 @@
 //#define RECORD
 //#define PLAYBACK
 //#define SAVE_IMAGE
-#define PRINT_FPS
+//#define PRINT_FPS
 
 #define SAMPLES 0x1
 
