@@ -14,7 +14,6 @@
 #include <stdio.h>
 
 #include "session.hpp"
-#include "globals.hpp"
 #include "program.hpp"
 #include "buffer_object.hpp"
 #include "kernel.hpp"
@@ -59,14 +58,13 @@ static unsigned ceil_pow2_exp(unsigned num)
 
 int rayInit(int w, int h)
 {
-	cl_int err;
 	int i;
 	
 	width = w;
 	height = h;
 	
 	session = new cl::session();
-	image = new cl::gl_image_object(session->get_context());
+	image = new cl::gl_image_object(session->get_context(),width,height);
 	queue = &session->get_queue();
 	image->bind_queue(queue->get_cl_command_queue());
 	
@@ -109,19 +107,6 @@ int rayInit(int w, int h)
 	queue->flush();
 	free(accum_buffer_data);
 	
-	const float shape_coord[4*6*3] = {
-	  0.0,-1.0,-2.0,sqrt(3.0)/2.0,0.5,-2.0,-sqrt(3.0)/2.0,0.5,-2.0,
-	  sqrt(3.0)/2.0,-0.5,0.0,0.0,1.0,0.0,-sqrt(3.0)/2.0,-0.5,0.0,
-	  0,1,-2,sqrt(3.0)/2,2.5,-1,-sqrt(3.0)/2,2.5,-1,
-	  sqrt(3.0)/2,1.5,-1,0,3,-2,-sqrt(3.0)/2,1.5,-1,
-	  0,-4,-3,2*sqrt(3.0),2,-3,-2*sqrt(3.0),2,-3,
-	  2*sqrt(3.0),-2,-1,0,4,-1,-2*sqrt(3.0),-2,-1,
-	  0.0,-0.5,2.0,sqrt(3.0)/4.0,0.25,2.0,-sqrt(3.0)/4.0,0.25,2.0,
-	  sqrt(3.0)/4.0,-0.25,1.5,0.0,0.5,1.5,-sqrt(3.0)/4.0,-0.25,1.5
-	};
-	buffers["shapes"]->store_data(shape_coord,4*6*3);
-	queue->flush();
-	
 	// Create a program from the kernel source
 	program = new cl::program("cl/kernel.cl",session->get_context().get_cl_context(),session->get_device_id());
 	kernels = &program->get_kernel_map();
@@ -157,7 +142,8 @@ void rayDispose()
 
 void rayLoadGeometry(const float *geom, size_t size)
 {
-	
+	buffers["shapes"]->store_data(geom,size);
+	queue->flush();
 }
 
 void rayLoadInstance(const float *map, const unsigned *index, long size)
