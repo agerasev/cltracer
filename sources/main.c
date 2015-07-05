@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
 	  0.0,-0.5,2.0,sqrt(3.0)/4.0,0.25,2.0,-sqrt(3.0)/4.0,0.25,2.0,
 	  sqrt(3.0)/4.0,-0.25,1.5,0.0,0.5,1.5,-sqrt(3.0)/4.0,-0.25,1.5
 	};
-	rayLoadGeometry(shape_coord,4*6*3);
+	rayLoadGeometry(shape_coord,4*6*3*sizeof(float));
 	
 #ifdef RECORD
 	FILE *rec_file = fopen("record","wb");

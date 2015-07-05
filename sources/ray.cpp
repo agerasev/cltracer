@@ -94,16 +94,16 @@ int rayInit(int w, int h)
 		random_buffer[i] = (seed = 3942082377*seed + 1234567);
 	}
 	
-	buffers["random"]->store_data(random_buffer,buffer_size);
+	buffers["random"]->store_data(random_buffer,buffer_size*sizeof(unsigned));
 	queue->flush();
 	free(random_buffer);
 	
-	float *accum_buffer_data = (float*)malloc(sizeof(float)*3*screen_size);
+	float *accum_buffer_data = (float*)malloc(3*screen_size*sizeof(float));
 	for(i = 0; i < int(3*screen_size); ++i)
 	{
 		accum_buffer_data[i] = 0.0f;
 	}
-	buffers["accum_buffer"]->store_data(accum_buffer_data,3*screen_size);
+	buffers["accum_buffer"]->store_data(accum_buffer_data,3*screen_size*sizeof(float));
 	queue->flush();
 	free(accum_buffer_data);
 	
