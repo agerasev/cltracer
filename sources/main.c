@@ -20,7 +20,13 @@
 //#define SAVE_IMAGE
 //#define PRINT_FPS
 
+//#define FIXED_SAMPLE_RATE
+
+#ifdef FIXED_SAMPLE_RATE
 #define SAMPLES 0x1
+#else // FIXED_SAMPLE_RATE
+#define FRAME_PERIOD 17 //ms
+#endif // FIXED_SAMPLE_RATE
 
 static int width = 800;//1280;
 static int height = 600;//720;
@@ -290,6 +296,7 @@ int main(int argc, char *argv[])
 			raySetOri(yaw,pitch);
 			rayClear();
 		}
+#ifdef FIXED_SAMPLE_RATE
 		int i;
 		for(i = 0; i < SAMPLES; ++i)
 		{
@@ -298,6 +305,16 @@ int main(int argc, char *argv[])
 				return 1;
 			}
 		}
+#else // FIXED_SAMPLE_RATE
+		long st = SDL_GetTicks();
+		while(SDL_GetTicks() - st < FRAME_PERIOD)
+		{
+			if(rayRender() != 0)
+			{
+				return 1;
+			}
+		}
+#endif // FIXED_SAMPLE_RATE
 		if(upd)
 		{
 			rayUpdateMotion();
