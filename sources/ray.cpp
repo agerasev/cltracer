@@ -13,14 +13,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "session.hpp"
-#include "program.hpp"
-#include "buffer_object.hpp"
-#include "kernel.hpp"
-#include "work_range.hpp"
-#include "map.hpp"
+#include <cl/session.hpp>
+#include <cl/program.hpp>
+#include <cl/buffer_object.hpp>
+#include <cl/kernel.hpp>
+#include <cl/work_range.hpp>
+#include <cl/map.hpp>
 #include "camera.hpp"
-#include "gl_image_object.hpp"
+#include <cl/gl_image_object.hpp>
 
 #define CAM_SIZE (27*sizeof(float))
 #define RAY_SIZE (9*sizeof(float) + 3*sizeof(int))

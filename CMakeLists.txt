@@ -8,4 +8,8 @@ add_definitions(-DRAY_GL -DCL_GL_INTEROP -DCL_PROFILING)
 include_directories(sources/cl)
 
 add_executable(cltracer ${SOURCES})
+
+add_subdirectory(submodules/libcl4u)
+include_directories(submodules/libcl4u/include)
+
 target_link_libraries(${PROJECT_NAME} -lm -lOpenCL -lSDL2 -lGL -lGLEW)
