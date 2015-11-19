@@ -38,6 +38,7 @@ kernel void start(global uchar *ray_data, constant uchar *cam_data, global uint 
 	ray.color = (float3)(1.0f,1.0f,1.0f);
 	ray.source = 0;
 	ray.target = 0;
+	ray.type = RAY_TYPE_DIRECT;
 	
 	random[size.x*pos.y + pos.x] = seed;
 	ray_store(&ray, size.x*pos.y + pos.x, ray_data);

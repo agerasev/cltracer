@@ -3,10 +3,13 @@
 #include "opencl.h"
 
 #define HIT_FSIZE (12*sizeof(float))
-#define HIT_ISIZE (3*sizeof(int))
+#define HIT_ISIZE (4*sizeof(int))
 #define HIT_FOFFSET 0
 #define HIT_IOFFSET HIT_FSIZE
 #define HIT_SIZE (HIT_FSIZE + HIT_ISIZE)
+
+#define HIT_TYPE_DIRECT  0x01
+#define HIT_TYPE_DIFFUSE 0x02
 
 typedef struct
 {
@@ -16,6 +19,7 @@ typedef struct
 	float3 color;
 	int2 origin;
 	int object;
+	int type;
 }
 Hit;
 
@@ -31,6 +35,7 @@ Hit hit_load(int offset, __global const uchar *hit_data)
 	hit.color = vload3(3,fdata);
 	hit.origin = vload2(0,idata);
 	hit.object = idata[2];
+	hit.type = idata[3];
 	return hit;
 }
 
@@ -45,4 +50,5 @@ void hit_store(Hit *hit, int offset, __global uchar *hit_data)
 	vstore3(hit->color,3,fdata);
 	vstore2(hit->origin,0,idata);
 	idata[2] = hit->object;
+	idata[3] = hit->type;
 }

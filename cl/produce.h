@@ -11,9 +11,9 @@
 
 float3 get_sky_color(float3 dir)
 {
-	return (float3)(0.6f,0.6f,0.8f)*((float3)(dir.z,dir.z,dir.z)*0.5f + (float3)(0.5f,0.5f,0.5f));
+	//return (float3)(0.6f,0.6f,0.8f)*((float3)(dir.z,dir.z,dir.z)*0.5f + (float3)(0.5f,0.5f,0.5f));
 	//return (float3)((int)(10*(dir.x + 1))%2,(int)(10*(dir.y + 1))%2,(int)(10*(dir.z + 1))%2);
-	//return (float3)(0.0f,0.0f,0.0f);
+	return (float3)(0.0f,0.0f,0.0f);
 }
 
 float3 reflect(float3 dir, float3 norm)
@@ -23,21 +23,7 @@ float3 reflect(float3 dir, float3 norm)
 
 float3 diffuse(float3 norm, uint *seed)
 {
-	float3 nx, ny;
-	if(dot((float3)(0.0f,0.0f,1.0f),norm) < 0.6 && dot((float3)(0.0f,0.0f,1.0f),norm) > -0.6)
-	{
-		nx = (float3)(0.0f,0.0f,1.0f);
-	}
-	else
-	{
-		nx = (float3)(1.0f,0.0f,0.0f);
-	}
-	ny = normalize(cross(nx,norm));
-	nx = cross(ny,norm);
-
-	float phi = 2.0f*M_PI_F*random_unif(seed);
-	float theta = acos(1.0f - 2.0f*random_unif(seed))/2.0f;
-	return nx*cos(phi)*sin(theta) + ny*sin(phi)*sin(theta) + norm*cos(theta);
+	return random_hemisphere_cos(norm, seed);
 }
 
 float3 reflect_diffused(float3 dir, float3 norm, float factor, uint *seed)
@@ -49,24 +35,31 @@ float3 reflect_diffused(float3 dir, float3 norm, float factor, uint *seed)
 	return normalize(factor*par*ref + ort);
 }
 
-float3 get_dir_to_obj(float3 src, global const float *obj, float *f, uint *seed) {
-	float3 dst = (float3) (0.0f, 0.0f, 0.0f);
+float3 direct(float3 src, float3 norm, global const float *obj, float *f, uint *seed) {
+	float3 center = (float3) (0.0f, 0.0f, 0.0f);
 	int i;
 	for(i = 0; i < 6; ++i) {
-		dst += vload3(i, obj);
+		center += vload3(i, obj);
 	}
-	dst /= 6.0f;
-	float max_dist2 = 0.0f;
+	center /= 6.0f;
+	float3 rc = center - src;
+	float len2 = dot(rc, rc);
+	float len = sqrt(len2);
+	
+	float rad2 = 0.0f;
 	for(i = 0; i < 6; ++i) {
-		float3 vd = vload3(i, obj) - src;
+		float3 vd = vload3(i, obj) - center;
 		float dist2 = dot(vd, vd);
-		if(dist2 > max_dist2) {
-			max_dist2 = dist2;
+		if(dist2 > rad2) {
+			rad2 = dist2;
 		}
 	}
-	float len = length(dst - src);
-	*f = 0.02;//0.5*max_dist2/(len*len);
-	float3 dir = (dst - src)/len;
+	
+	float cos_alpha = sqrt(1.0 - rad2/len2);
+	float saf = 1.0 - cos_alpha; // solid angle factor ((solid_angle)/(2*PI))
+	float3 dir = rc/len;
+	dir = random_sphere_cap(dir, cos_alpha, seed);
+	*f = saf*dot(dir, norm);
 	return dir;
 }
 
@@ -85,9 +78,9 @@ __kernel void produce(
 		return;
 	}
 	
-	const float3 diff[4] = {{0.2f,0.2f,0.6f},{0.2f,0.2f,0.0f},{0.0f,1.0f,0.0f},{0.0f,0.0f,0.0f}};
-	const float3 refl[4] = {{0.4f,0.4f,0.4f},{0.8f,0.8f,0.2f},{0.0f,0.0f,0.0f},{0.8f,0.8f,0.8f}};
-	const float3 glow[4] = {{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{32.0f,32.0f,24.0f}};
+	const float3 diff[4] = {{0.2f,0.2f,0.8f},{0.6f,0.6f,0.2f},{0.2f,1.0f,0.2f},{0.0f,0.0f,0.0f}};
+	const float3 refl[4] = {{0.2f,0.2f,0.2f},{0.4f,0.4f,0.1f},{0.0f,0.0f,0.0f},{0.8f,0.8f,0.8f}};
+	const float3 glow[4] = {{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{64.0f,64.0f,48.0f}};
 	
 	Hit hit = hit_load(pos,hit_data);
 	
@@ -98,7 +91,7 @@ __kernel void produce(
 	{
 		color += hit.color*get_sky_color(hit.dir);
 	}
-	else
+	else if(hit.type == RAY_TYPE_DIRECT)
 	{
 		color += hit.color*glow[hit.object-1];
 	}
@@ -122,6 +115,7 @@ __kernel void produce(
 		if(info.pre_size.x)
 		{
 			ray.color = hit.color*refl[hit.object-1];
+			ray.type = RAY_TYPE_DIRECT;
 			if(hit.object-1 == 1)
 			{
 				ray.dir = reflect_diffused(hit.dir,hit.norm,8.0f,&seed);
@@ -135,24 +129,24 @@ __kernel void produce(
 		}
 		
 		// diffusion
-		float3 color = hit.color*diff[hit.object-1]/(info.size-count);
+		float3 color = hit.color*diff[hit.object-1];
 		
 		// diffuse light attraction
-		/*
 		{
 			float f;
-			ray.dir = get_dir_to_obj(hit.pos, lights, &f, &seed);
+			ray.dir = direct(hit.pos, hit.norm, lights, &f, &seed);
 			ray.color = f*color;
+			ray.type = RAY_TYPE_DIRECT;
 			if(dot(ray.dir, hit.norm) > 0.0f) {
 				ray.target = 4;
 				ray_store(&ray, info.offset + count, ray_data);
 				++count;
 			}
 		}
-		*/
-		
+				
 		// random direction rays
-		ray.color = color;
+		ray.color = color/(info.size - count);
+		ray.type = RAY_TYPE_DIFFUSE;
 		for(; count < info.size; ++count)
 		{
 			ray.dir = diffuse(hit.norm,&seed);

@@ -6,6 +6,7 @@
 #include "hit.h"
 #include "hit_info.h"
 #include "analysis.h"
+#include "utility.h"
 
 void gen_aabb(float3 *lp, float3 *hp, global const float *v, const int n)
 {
@@ -89,6 +90,7 @@ kernel void intersect(
 	hit.color = ray.color;
 	hit.origin = ray.origin;
 	hit.object = hit_obj;
+	hit.type = ray.type;
 	
 	HitInfo info;
 	

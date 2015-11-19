@@ -3,10 +3,13 @@
 #include "opencl.h"
 
 #define RAY_FSIZE (9*sizeof(float))
-#define RAY_ISIZE (4*sizeof(int))
+#define RAY_ISIZE (5*sizeof(int))
 #define RAY_FOFFSET 0
 #define RAY_IOFFSET RAY_FSIZE
 #define RAY_SIZE (RAY_FSIZE + RAY_ISIZE)
+
+#define RAY_TYPE_DIRECT  0x01
+#define RAY_TYPE_DIFFUSE 0x02
 
 typedef struct
 {
@@ -16,6 +19,7 @@ typedef struct
 	int2 origin;
 	int source;
 	int target;
+	int type;
 } 
 Ray;
 
@@ -31,6 +35,7 @@ Ray ray_load(int offset, global const uchar *ray_data)
 	ray.origin = vload2(0,idata);
 	ray.source = idata[2];
 	ray.target = idata[3];
+	ray.type = idata[4];
 	return ray;
 }
 
@@ -45,4 +50,5 @@ void ray_store(Ray *ray, int offset, global uchar *ray_data)
 	vstore2(ray->origin,0,idata);
 	idata[2] = ray->source;
 	idata[3] = ray->target;
+	idata[4] = ray->type;
 }

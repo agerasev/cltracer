@@ -23,13 +23,14 @@
 #include <cl/gl_image_object.hpp>
 
 #define CAM_SIZE (27*sizeof(float))
-#define RAY_SIZE (9*sizeof(float) + 4*sizeof(int))
-#define HIT_SIZE (12*sizeof(float) + 3*sizeof(int))
+#define RAY_SIZE (9*sizeof(float) + 5*sizeof(int))
+#define HIT_SIZE (12*sizeof(float) + 4*sizeof(int))
 #define HIT_INFO_SIZE (6*sizeof(int))
 #define SHAPE_SIZE 6*3*sizeof(float)
 
 #define SHAPE_BUFFER_SIZE 4*SHAPE_SIZE
-#define MAX_CHILD_RAYS 4
+#define RAYS_PER_PIXEL 4
+#define MAX_DIFFUSE_RAYS 2
 
 static unsigned int width, height;
 
@@ -71,7 +72,7 @@ int rayInit(int w, int h)
 	cl_context context = session->get_context().get_cl_context();
 	
 	screen_size = width*height;
-	buffer_size = 1 << ceil_pow2_exp(screen_size*MAX_CHILD_RAYS);
+	buffer_size = 1 << ceil_pow2_exp(screen_size*RAYS_PER_PIXEL);
 	
 	buffers.insert("ray_data",     new cl::buffer_object(context, RAY_SIZE*buffer_size));
 	buffers.insert("hit_data",     new cl::buffer_object(context, HIT_SIZE*buffer_size));
@@ -300,7 +301,7 @@ int rayRender()
 			if(rc2[1] != 0)
 			{
 				mfactor = (buffer_size - rc2[0])/rc2[1];
-				unsigned mdif = 1;
+				unsigned mdif = MAX_DIFFUSE_RAYS;
 				/*
 				unsigned shift = (2 - samples)*(2 - (int)samples > 0);
 				switch(i)
@@ -315,11 +316,11 @@ int rayRender()
 					mdif = 1>>shift;
 					break;
 				}
-				*/
 				if(mdif <= 0)
 				{
 					mdif = 1;
 				}
+				*/
 				if(mfactor > mdif)
 				{
 					mfactor = mdif;
