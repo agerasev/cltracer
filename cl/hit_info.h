@@ -1,4 +1,6 @@
-/** hit_info.cl */
+#pragma once
+
+#include "opencl.h"
 
 #define HIT_INFO_SIZE (6*sizeof(int))
 

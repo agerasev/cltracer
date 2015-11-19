@@ -1,4 +1,6 @@
-/* matrix.cl */
+#pragma once
+
+#include "opencl.h"
 
 typedef struct
 {

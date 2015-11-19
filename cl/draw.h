@@ -1,4 +1,6 @@
-/** draw.cl */
+#pragma once
+
+#include "opencl.h"
 
 __kernel void draw(
   __global const uint *color_buffer, __global float *accum_buffer, 

@@ -25,7 +25,7 @@
 #ifdef FIXED_SAMPLE_RATE
 #define SAMPLES 0x1
 #else // FIXED_SAMPLE_RATE
-#define FRAME_PERIOD 17 //ms
+#define FRAME_PERIOD 18 //ms
 #endif // FIXED_SAMPLE_RATE
 
 static int width = 800;//1280;
@@ -98,6 +98,12 @@ int main(int argc, char *argv[])
 	};
 	rayLoadGeometry(shape_coord,4*6*3*sizeof(float));
 	
+	const float light_coord[6*3] = {
+	  0.0,-0.5,2.0,sqrt(3.0)/4.0,0.25,2.0,-sqrt(3.0)/4.0,0.25,2.0,
+	  sqrt(3.0)/4.0,-0.25,1.5,0.0,0.5,1.5,-sqrt(3.0)/4.0,-0.25,1.5
+	};
+	rayLoadEmitters(light_coord,6*3*sizeof(float));
+	
 #ifdef RECORD
 	FILE *rec_file = fopen("record","wb");
 #endif
@@ -110,7 +116,7 @@ int main(int argc, char *argv[])
 	SDL_Event event;
 	int ws = 0, as = 0, ss = 0, ds = 0, spcs = 0, ctls = 0;
 	int mmode = 1;
-	int tick = SDL_GetTicks(), frame = 0;
+	int tick = SDL_GetTicks(), frame = 0, pass = 0;
 	
 	SDL_Surface *image = SDL_CreateRGBSurface(SDL_SWSURFACE,width,height,24,0x0000ff,0x00ff00,0xff0000,0x000000);
 	int counter = 0;
@@ -296,6 +302,7 @@ int main(int argc, char *argv[])
 			raySetOri(yaw,pitch);
 			rayClear();
 		}
+		
 #ifdef FIXED_SAMPLE_RATE
 		int i;
 		for(i = 0; i < SAMPLES; ++i)
@@ -304,6 +311,7 @@ int main(int argc, char *argv[])
 			{
 				return 1;
 			}
+			++pass;
 		}
 #else // FIXED_SAMPLE_RATE
 		long st = SDL_GetTicks();
@@ -313,6 +321,7 @@ int main(int argc, char *argv[])
 			{
 				return 1;
 			}
+			++pass;
 		}
 #endif // FIXED_SAMPLE_RATE
 		if(upd)
@@ -344,8 +353,10 @@ int main(int argc, char *argv[])
 		if(ntick - tick > 1000)
 		{
 			tick = ntick;
-			fprintf(stdout,"fps: %d\n",frame);
+			fprintf(stdout,"fps: %d, pass: %.1f\n",frame,(float)pass/frame);
+			fflush(stdout);
 			frame = 0;
+			pass = 0;
 		}
 #endif // PRINT_FPS
 	}

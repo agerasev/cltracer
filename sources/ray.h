@@ -20,6 +20,7 @@ void raySetPos(const float *pos);
 void raySetOri(float yaw, float pitch);
 
 void rayLoadGeometry(const float *geom, size_t size);
+void rayLoadEmitters(const float *geom, size_t size);
 void rayLoadInstance(const float *map, const unsigned *index, long size);
 
 void rayClear();

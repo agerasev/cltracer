@@ -1,4 +1,6 @@
-/** hit.cl */
+#pragma once
+
+#include "opencl.h"
 
 #define HIT_FSIZE (12*sizeof(float))
 #define HIT_ISIZE (3*sizeof(int))

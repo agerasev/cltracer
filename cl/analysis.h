@@ -1,4 +1,13 @@
-/* analysis.cl */
+#pragma once
+
+/* analisys.h includes routines to find intersections with
+ * biquadric bezier surface analytically
+ */
+
+#include "opencl.h"
+
+#include "matrix.h"
+#include "gsl_solver.h"
 
 matrix3 get_zmat(float3 z)
 {
@@ -38,12 +47,26 @@ float newton_step_cubic(float x, float b, float c, float d)
 #define HIT_DIST 1e-2
 #define NSTEP    4
 
+/* intersect_surface(
+ *   v - array of 6 float3 - buquadric surface points,
+ *   osf - magic constant for solution errors removal
+ *   same - non-zero when ray produced by this surface
+ *   pos - ray start point
+ *   dir - ray direction
+ *   tp - pointer for distance writeback
+ *   cp - pointer for intersection point writeback
+ *   np - pointer for surface normal writeback
+ *   )
+ * returns number of intersections
+ */
 int intersect_surface(
   global const float *v, const float osf, const int same, 
   const float3 pos, const float3 dir, 
   float *tp, float3 *cp, float3 *np
 )
 {
+/* TODO: eliminate osf by scaling surface */
+	
 	// get transformation
 	matrix3 m = get_zmat(dir);
 	

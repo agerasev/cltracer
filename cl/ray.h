@@ -1,7 +1,9 @@
-/** ray.cl */
+#pragma once
+
+#include "opencl.h"
 
 #define RAY_FSIZE (9*sizeof(float))
-#define RAY_ISIZE (3*sizeof(int))
+#define RAY_ISIZE (4*sizeof(int))
 #define RAY_FOFFSET 0
 #define RAY_IOFFSET RAY_FSIZE
 #define RAY_SIZE (RAY_FSIZE + RAY_ISIZE)
@@ -13,6 +15,7 @@ typedef struct
 	float3 color;
 	int2 origin;
 	int source;
+	int target;
 } 
 Ray;
 
@@ -27,6 +30,7 @@ Ray ray_load(int offset, global const uchar *ray_data)
 	ray.color = vload3(2,fdata);
 	ray.origin = vload2(0,idata);
 	ray.source = idata[2];
+	ray.target = idata[3];
 	return ray;
 }
 
@@ -40,4 +44,5 @@ void ray_store(Ray *ray, int offset, global uchar *ray_data)
 	vstore3(ray->color,2,fdata);
 	vstore2(ray->origin,0,idata);
 	idata[2] = ray->source;
+	idata[3] = ray->target;
 }

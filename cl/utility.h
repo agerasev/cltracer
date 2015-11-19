@@ -1,4 +1,6 @@
-/* utility.cl */
+#pragma once
+
+#include "opencl.h"
 
 float __OVERLOADABLE__ _max(float a, float b)
 {

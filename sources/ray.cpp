@@ -23,13 +23,13 @@
 #include <cl/gl_image_object.hpp>
 
 #define CAM_SIZE (27*sizeof(float))
-#define RAY_SIZE (9*sizeof(float) + 3*sizeof(int))
+#define RAY_SIZE (9*sizeof(float) + 4*sizeof(int))
 #define HIT_SIZE (12*sizeof(float) + 3*sizeof(int))
 #define HIT_INFO_SIZE (6*sizeof(int))
 #define SHAPE_SIZE 6*3*sizeof(float)
 
 #define SHAPE_BUFFER_SIZE 4*SHAPE_SIZE
-#define MAX_CHILD_RAYS 2
+#define MAX_CHILD_RAYS 4
 
 static unsigned int width, height;
 
@@ -73,16 +73,17 @@ int rayInit(int w, int h)
 	screen_size = width*height;
 	buffer_size = 1 << ceil_pow2_exp(screen_size*MAX_CHILD_RAYS);
 	
-	buffers.insert("ray_data",     new cl::buffer_object(context,RAY_SIZE*buffer_size));
-	buffers.insert("hit_data",     new cl::buffer_object(context,HIT_SIZE*buffer_size));
-	buffers.insert("cam_fdata",    new cl::buffer_object(context,CAM_SIZE));
-	buffers.insert("color_buffer", new cl::buffer_object(context,sizeof(int)*3*screen_size));
-	buffers.insert("accum_buffer", new cl::buffer_object(context,sizeof(float)*3*screen_size));
-	buffers.insert("hit_info",     new cl::buffer_object(context,HIT_INFO_SIZE*buffer_size));
-	buffers.insert("scan_buf",     new cl::buffer_object(context,2*sizeof(int)*buffer_size));
-	buffers.insert("ray_count",    new cl::buffer_object(context,3*sizeof(int)));
-	buffers.insert("random",       new cl::buffer_object(context,sizeof(int)*buffer_size));
-	buffers.insert("shapes",       new cl::buffer_object(context,SHAPE_BUFFER_SIZE));
+	buffers.insert("ray_data",     new cl::buffer_object(context, RAY_SIZE*buffer_size));
+	buffers.insert("hit_data",     new cl::buffer_object(context, HIT_SIZE*buffer_size));
+	buffers.insert("cam_fdata",    new cl::buffer_object(context, CAM_SIZE));
+	buffers.insert("color_buffer", new cl::buffer_object(context, sizeof(int)*3*screen_size));
+	buffers.insert("accum_buffer", new cl::buffer_object(context, sizeof(float)*3*screen_size));
+	buffers.insert("hit_info",     new cl::buffer_object(context, HIT_INFO_SIZE*buffer_size));
+	buffers.insert("scan_buf",     new cl::buffer_object(context, 2*sizeof(int)*buffer_size));
+	buffers.insert("ray_count",    new cl::buffer_object(context, 3*sizeof(int)));
+	buffers.insert("random",       new cl::buffer_object(context, sizeof(int)*buffer_size));
+	buffers.insert("shapes",       new cl::buffer_object(context, SHAPE_BUFFER_SIZE));
+	buffers.insert("emitters",     new cl::buffer_object(context, SHAPE_BUFFER_SIZE));
 	
 	for(cl::buffer_object *bo : buffers)
 		bo->bind_queue(queue->get_cl_command_queue());
@@ -108,7 +109,7 @@ int rayInit(int w, int h)
 	free(accum_buffer_data);
 	
 	// Create a program from the kernel source
-	program = new cl::program("cl/kernel.cl",session->get_context().get_cl_context(),session->get_device_id());
+	program = new cl::program(session->get_context().get_cl_context(),session->get_device_id(),"kernel.c","cl");
 	kernels = &program->get_kernel_map();
 	
 	for(cl::kernel *k : (*kernels))
@@ -124,11 +125,6 @@ void rayDispose()
 	// cl_uint err;
 	session->get_queue().flush();
 	
-	for(cl::kernel *k : (*kernels))
-	{
-		delete k;
-	}
-	
 	delete program;
 	
 	for(cl::buffer_object *bo : buffers)
@@ -142,7 +138,13 @@ void rayDispose()
 
 void rayLoadGeometry(const float *geom, size_t size)
 {
-	buffers["shapes"]->store_data(geom,size);
+	buffers["shapes"]->store_data(geom, size);
+	queue->flush();
+}
+
+void rayLoadEmitters(const float *geom, size_t size) 
+{
+	buffers["emitters"]->store_data(geom, size);
 	queue->flush();
 }
 
@@ -349,6 +351,7 @@ int rayRender()
 		  buffers["hit_data"],
 		  buffers["ray_data"],
 		  buffers["hit_info"],
+		  buffers["emitters"],
 		  buffers["color_buffer"],
 		  int(width),
 		  int(work_size),

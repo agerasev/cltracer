@@ -1,7 +1,7 @@
 build
 *.user
 
-cl/kernel.cl
+cl/opencl.h
 *.mp4
 record
 video/*

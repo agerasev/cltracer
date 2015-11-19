@@ -1,4 +1,11 @@
-/** intersect.cl */
+#pragma once
+
+#include "opencl.h"
+
+#include "ray.h"
+#include "hit.h"
+#include "hit_info.h"
+#include "analysis.h"
 
 void gen_aabb(float3 *lp, float3 *hp, global const float *v, const int n)
 {

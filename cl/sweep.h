@@ -1,4 +1,8 @@
-/** sweep.cl */
+#pragma once
+
+#include "opencl.h"
+
+#include "hit_info.h"
 
 kernel void prepare(global const uchar *hit_info, global uint *buffer, const uint hit_count, const uint work_size)
 {

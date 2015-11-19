@@ -1,4 +1,6 @@
-/** random.cl */
+#pragma once
+
+#include "opencl.h"
 
 uint random_next(uint *seed)
 {

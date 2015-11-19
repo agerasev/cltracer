@@ -1,4 +1,6 @@
-/** camera.cl */
+#pragma once
+
+#include "opencl.h"
 
 #define CAM_SIZE (27*sizeof(float))
 
