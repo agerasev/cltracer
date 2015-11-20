@@ -48,8 +48,7 @@ float newton_step_cubic(float x, float b, float c, float d)
 #define NSTEP    4
 
 /* intersect_surface(
- *   v - array of 6 float3 - buquadric surface points,
- *   osf - magic constant for solution errors removal
+ *   v - array of 6 float3 - buquadric surface points
  *   same - non-zero when ray produced by this surface
  *   pos - ray start point
  *   dir - ray direction
@@ -60,7 +59,7 @@ float newton_step_cubic(float x, float b, float c, float d)
  * returns number of intersections
  */
 int intersect_surface(
-  global const float *v, const float osf, const int same, 
+  global const float *v, const int same, 
   const float3 pos, const float3 dir, 
   float *tp, float3 *cp, float3 *np
 )
@@ -119,7 +118,7 @@ int intersect_surface(
 	int rc;
 	float r[4];
 	const int nsc = NSTEP;
-	if(fabs(k[0]) > CUB_EPS*osf)
+	//if(fabs(k[0]) > CUB_EPS*osf)
 	{
 		rc = gsl_poly_solve_quartic(k[1]/k[0],k[2]/k[0],k[3]/k[0],k[4]/k[0],&r[0],&r[1],&r[2],&r[3]);
 		int i,j;
@@ -131,6 +130,7 @@ int intersect_surface(
 			}
 		}
 	}
+	/*
 	else
 	{
 		rc = gsl_poly_solve_cubic(k[2]/k[1],k[3]/k[1],k[4]/k[1],&r[0],&r[1],&r[2]);
@@ -143,6 +143,7 @@ int intersect_surface(
 			}
 		}
 	}
+	*/
 	if(rc <= 0)
 	{
 		return 0;

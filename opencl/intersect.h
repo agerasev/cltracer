@@ -54,13 +54,12 @@ kernel void intersect(
 	int hit_obj = 0;
 	float3 hit_pos, hit_norm;
 	
-	const uint2 mat[4] = {{1,1},{1,1},{0,1},{0,0}};
-	const float osf[4] = {1,0.05,64,0.1};
+	const uint2 mat[3] = {{1,1},{0,1},{0,0}};
 	
 	hit_obj = 0;
 	int i;
 	float mt;
-	for(i = 0; i < 4; ++i)
+	for(i = 0; i < 3; ++i)
 	{
 		float t;
 		float3 n,c;
@@ -68,8 +67,7 @@ kernel void intersect(
 		gen_aabb(&lp,&hp,shapes+3*6*i,6);
 		if(test_aabb(&t,ray.pos,ray.dir,lp,hp))
 		{
-			// float osf = dot(hp - lp,(float3)(1,1,1));
-			if(intersect_surface(shapes+3*6*i,osf[i],ray.source==i+1,ray.pos,ray.dir,&t,&c,&n))
+			if(intersect_surface(shapes+3*6*i,ray.source==i+1,ray.pos,ray.dir,&t,&c,&n))
 			{
 				if(hit_obj == 0 || t < mt)
 				{
@@ -101,8 +99,19 @@ kernel void intersect(
 	info.pre_size.y = 0;
 	if(hit_obj)
 	{
-		info.pre_size.x = mat[hit_obj-1].x;
-		info.pre_size.y = mat[hit_obj-1].y;
+		if(ray.type == RAY_TYPE_DIRECT) {
+			info.pre_size.x = mat[hit_obj-1].x;
+			info.pre_size.y = mat[hit_obj-1].y;
+		} else if(ray.type == RAY_TYPE_DIFFUSE) {
+			info.pre_size.x = mat[hit_obj-1].x;
+			info.pre_size.y = mat[hit_obj-1].y;
+		} else if(ray.type == RAY_TYPE_ATTRACTED) {
+			info.pre_size.x = 0;
+			info.pre_size.y = 0;
+			if(ray.target != hit_obj) {
+				hit.color = (float3) (0.0, 0.0, 0.0);
+			}
+		}
 	}
 	info.pre_offset.x = info.pre_size.x;
 	info.pre_offset.y = info.pre_size.y;

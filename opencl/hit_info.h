@@ -1,17 +1,7 @@
 #pragma once
 
 #include "opencl.h"
-
-#define HIT_INFO_SIZE (6*sizeof(int))
-
-typedef struct
-{
-	uint size;
-	uint offset;
-	uint2 pre_offset;
-	uint2 pre_size;
-}
-HitInfo;
+#include "def/hit_info.h"
 
 HitInfo hit_info_load(int offset, global const uchar *info_data)
 {

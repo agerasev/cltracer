@@ -2,6 +2,8 @@
 
 #include "opencl.h"
 
+#include "color.h"
+
 __kernel void draw(
   __global const uint *color_buffer, __global float *accum_buffer, 
   const float factor, __write_only image2d_t image
@@ -11,7 +13,7 @@ __kernel void draw(
 	const int2 pos = (int2)(get_global_id(0), get_global_id(1));
 	
 	float3 color = 
-	  factor*(convert_float3(vload3(pos.x + size.x*pos.y,color_buffer))/0x10000) + 
+	  factor*(convert_float3(vload3(pos.x + size.x*pos.y,color_buffer))/COLOR_PREC) + 
 	  (1.0f - factor)*vload3(pos.x + size.x*pos.y,accum_buffer);
 	
 	vstore3(color,pos.x + size.x*pos.y,accum_buffer);

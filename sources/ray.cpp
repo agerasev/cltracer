@@ -30,7 +30,7 @@
 
 #define SHAPE_BUFFER_SIZE 4*SHAPE_SIZE
 #define RAYS_PER_PIXEL 4
-#define MAX_DIFFUSE_RAYS 2
+#define MAX_DIFFUSE_RAYS 1
 
 static unsigned int width, height;
 
@@ -110,7 +110,7 @@ int rayInit(int w, int h)
 	free(accum_buffer_data);
 	
 	// Create a program from the kernel source
-	program = new cl::program(session->get_context().get_cl_context(),session->get_device_id(),"kernel.c","cl");
+	program = new cl::program(session->get_context().get_cl_context(),session->get_device_id(),"kernel.c","opencl");
 	kernels = &program->get_kernel_map();
 	
 	for(cl::kernel *k : (*kernels))

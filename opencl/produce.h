@@ -6,6 +6,8 @@
 #include "hit.h"
 #include "hit_info.h"
 #include "random.h"
+#include "material.h"
+#include "color.h"
 
 #define DELTA 1e-6f
 
@@ -63,6 +65,18 @@ float3 direct(float3 src, float3 norm, global const float *obj, float *f, uint *
 	return dir;
 }
 
+float3 direct_diffused(float3 src, float3 dir, float3 norm, float factor, global const float *obj, float *f, uint *seed)
+{
+	float lf;
+	float3 dif = direct(src,norm,obj,&lf,seed);
+	float3 ref = reflect(dir,norm);
+	float par = dot(dif,ref);
+	par = 1.0 - factor*(1.0 - par);
+	par = !!(par > 0.0)*par;
+	*f = par;
+	return dif;
+}
+
 __kernel void produce(
 	__global const uchar *hit_data, __global uchar *ray_data, __global const uchar *hit_info,
 	__global const float *lights,
@@ -78,22 +92,32 @@ __kernel void produce(
 		return;
 	}
 	
-	const float3 diff[4] = {{0.2f,0.2f,0.8f},{0.6f,0.6f,0.2f},{0.2f,1.0f,0.2f},{0.0f,0.0f,0.0f}};
-	const float3 refl[4] = {{0.2f,0.2f,0.2f},{0.4f,0.4f,0.1f},{0.0f,0.0f,0.0f},{0.8f,0.8f,0.8f}};
-	const float3 glow[4] = {{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f},{64.0f,64.0f,48.0f}};
+	Material mat[4];
+	mat[0].type = MAT_DIFF | MAT_REFL;
+	mat[1].type = MAT_DIFF;
+	mat[2].type = MAT_GLOW;
+	mat[0].refl = (float3) (0.2f,0.2f,0.2f);
+	mat[0].diff = (float3) (0.2f,0.2f,0.8f); 
+	mat[1].diff = (float3) (0.2f,1.0f,0.2f);
+	mat[2].glow = (float3) (64.0f,64.0f,48.0f);
 	
 	Hit hit = hit_load(pos,hit_data);
 	
 	float3 color = {0.0f,0.0f,0.0f};
+	
+	Material *m = mat;
+	if(hit.object > 0 && hit.object <= 3)
+		m = mat + (hit.object - 1);
 	
 	// glowing
 	if(hit.object == 0)
 	{
 		color += hit.color*get_sky_color(hit.dir);
 	}
-	else if(hit.type == RAY_TYPE_DIRECT)
+	else if(hit.type == RAY_TYPE_DIRECT || hit.type == RAY_TYPE_ATTRACTED)
 	{
-		color += hit.color*glow[hit.object-1];
+		if(m->type & MAT_GLOW)
+			color += hit.color*m->glow;
 	}
 	
 	HitInfo info = hit_info_load(pos,hit_info);
@@ -112,16 +136,24 @@ __kernel void produce(
 		uint count = 0;
 		
 		// reflection
-		if(info.pre_size.x)
+		if(m->type & (MAT_REFL | MAT_ADIF) && info.pre_size.x)
 		{
-			ray.color = hit.color*refl[hit.object-1];
 			ray.type = RAY_TYPE_DIRECT;
-			if(hit.object-1 == 1)
+			if(m->type & MAT_ADIF)
 			{
+				/* TODO: use proper distribution */
+				
+				ray.color = hit.color*m->adif;
 				ray.dir = reflect_diffused(hit.dir,hit.norm,8.0f,&seed);
+				/*
+				float f;
+				ray.dir = direct_diffused(hit.pos, hit.dir, hit.norm, 8.0f, lights, &f, &seed);
+				ray.color = f*hit.color*m->adif*(dot(ray.dir, hit.norm) > 0.0);
+				*/
 			}
 			else
 			{
+				ray.color = hit.color*m->refl;
 				ray.dir = reflect(hit.dir,hit.norm);
 			}
 			ray_store(&ray, info.offset + count, ray_data);
@@ -129,37 +161,39 @@ __kernel void produce(
 		}
 		
 		// diffusion
-		float3 color = hit.color*diff[hit.object-1];
-		
-		// diffuse light attraction
-		{
-			float f;
-			ray.dir = direct(hit.pos, hit.norm, lights, &f, &seed);
-			ray.color = f*color;
-			ray.type = RAY_TYPE_DIRECT;
-			if(dot(ray.dir, hit.norm) > 0.0f) {
-				ray.target = 4;
-				ray_store(&ray, info.offset + count, ray_data);
-				++count;
+		if(m->type & MAT_DIFF && info.pre_size.y) {
+			float3 color = hit.color*m->diff;
+			
+			// diffuse light attraction
+			{
+				float f;
+				ray.dir = direct(hit.pos, hit.norm, lights, &f, &seed);
+				ray.color = f*color;
+				ray.type = RAY_TYPE_ATTRACTED;
+				if(dot(ray.dir, hit.norm) > 0.0f) {
+					ray.target = 3;
+					ray_store(&ray, info.offset + count, ray_data);
+					++count;
+				}
 			}
-		}
-				
-		// random direction rays
-		ray.color = color/(info.size - count);
-		ray.type = RAY_TYPE_DIFFUSE;
-		for(; count < info.size; ++count)
-		{
-			ray.dir = diffuse(hit.norm,&seed);
-			ray.target = 0;
-			ray_store(&ray,info.offset + count,ray_data);
+					
+			// random direction rays
+			ray.color = color/(info.size - count);
+			ray.type = RAY_TYPE_DIFFUSE;
+			for(; count < info.size; ++count)
+			{
+				ray.dir = diffuse(hit.norm,&seed);
+				ray.target = 0;
+				ray_store(&ray,info.offset + count,ray_data);
+			}
 		}
 		
 		random[pos] = seed;
 	}
 	
 	// replace with atomic_add for float in later version
-	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 0, (uint)(0x10000*color.x));
-	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 1, (uint)(0x10000*color.y));
-	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 2, (uint)(0x10000*color.z));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 0, (uint)(COLOR_PREC*color.x));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 1, (uint)(COLOR_PREC*color.y));
+	atomic_add(color_buffer + 3*(hit.origin.x + hit.origin.y*pitch) + 2, (uint)(COLOR_PREC*color.z));
 	//vstore3(convert_uint4(0x10000*color) + vload3(hit.origin.x + hit.origin.y*pitch,color_buffer),hit.origin.x + hit.origin.y*pitch,color_buffer);
 }

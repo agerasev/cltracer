@@ -18,15 +18,17 @@
 //#define RECORD
 //#define PLAYBACK
 //#define SAVE_IMAGE
-//#define PRINT_FPS
+#define PRINT_FPS
 
 //#define FIXED_SAMPLE_RATE
 
 #ifdef FIXED_SAMPLE_RATE
-#define SAMPLES 0x1
+#define SAMPLES 0x8
 #else // FIXED_SAMPLE_RATE
 #define FRAME_PERIOD 18 //ms
 #endif // FIXED_SAMPLE_RATE
+
+#define MOTION
 
 static int width = 800;//1280;
 static int height = 600;//720;
@@ -86,23 +88,20 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 	
-	const float shape_coord[4*6*3] = {
-	  0.0,-1.0,-2.0,sqrt(3.0)/2.0,0.5,-2.0,-sqrt(3.0)/2.0,0.5,-2.0,
-	  sqrt(3.0)/2.0,-0.5,0.0,0.0,1.0,0.0,-sqrt(3.0)/2.0,-0.5,0.0,
-	  0,1,-2,sqrt(3.0)/2,2.5,-1,-sqrt(3.0)/2,2.5,-1,
-	  sqrt(3.0)/2,1.5,-1,0,3,-2,-sqrt(3.0)/2,1.5,-1,
-	  0,-4,-3,2*sqrt(3.0),2,-3,-2*sqrt(3.0),2,-3,
-	  2*sqrt(3.0),-2,-1,0,4,-1,-2*sqrt(3.0),-2,-1,
-	  0.0,-0.5,2.0,sqrt(3.0)/4.0,0.25,2.0,-sqrt(3.0)/4.0,0.25,2.0,
-	  sqrt(3.0)/4.0,-0.25,1.5,0.0,0.5,1.5,-sqrt(3.0)/4.0,-0.25,1.5
-	};
-	rayLoadGeometry(shape_coord,4*6*3*sizeof(float));
+	double t = 0.0;
+	double sa[2] = {0.5, 1.0}, sd = -1.0;
+	double sf[6] = {-0.53, -0.47, -0.65, 0.58, 0.61, 0.55};
 	
-	const float light_coord[6*3] = {
-	  0.0,-0.5,2.0,sqrt(3.0)/4.0,0.25,2.0,-sqrt(3.0)/4.0,0.25,2.0,
-	  sqrt(3.0)/4.0,-0.25,1.5,0.0,0.5,1.5,-sqrt(3.0)/4.0,-0.25,1.5
+	float shape_coord[3*6*3] = {
+	  0.0,-1.0,sd, sqrt(3.0)/2.0,0.5,sd, -sqrt(3.0)/2.0,0.5,sd,
+	  sqrt(3.0)/2.0,-0.5, sd,0.0,1.0,sd, -sqrt(3.0)/2.0,-0.5,sd,
+	  0,-4,-3, 2*sqrt(3.0),2,-3, -2*sqrt(3.0),2,-3,
+	  2*sqrt(3.0),-2,-1, 0,4,-1, -2*sqrt(3.0),-2,-1,
+	  0.0,-0.5,1.5, sqrt(3.0)/4.0,0.25,1.5, -sqrt(3.0)/4.0,0.25,1.5,
+	  sqrt(3.0)/4.0,-0.25,1.0, 0.0,0.5,1.0, -sqrt(3.0)/4.0,-0.25,1.0
 	};
-	rayLoadEmitters(light_coord,6*3*sizeof(float));
+	rayLoadGeometry(shape_coord,3*6*3*sizeof(float));
+	rayLoadEmitters(shape_coord + 2*6*3, 6*3*sizeof(float));
 	
 #ifdef RECORD
 	FILE *rec_file = fopen("record","wb");
@@ -259,6 +258,9 @@ int main(int argc, char *argv[])
 #endif
 
 		int upd = 0;
+#ifdef MOTION
+		upd = 1;
+#endif // MOTION
 #ifndef PLAYBACK
 		if(ws || as || ss || ds || spcs || ctls)
 		{
@@ -326,7 +328,15 @@ int main(int argc, char *argv[])
 #endif // FIXED_SAMPLE_RATE
 		if(upd)
 		{
+			shape_coord[2]  = sa[0]*sin(sf[0]*t) + sd;
+			shape_coord[5]  = sa[0]*sin(sf[1]*t) + sd;
+			shape_coord[8]  = sa[0]*sin(sf[2]*t) + sd;
+			shape_coord[11] = sa[1]*sin(sf[3]*t) + sd;
+			shape_coord[14] = sa[1]*sin(sf[4]*t) + sd;
+			shape_coord[17] = sa[1]*sin(sf[5]*t) + sd;
+			rayLoadGeometry(shape_coord, 6*3*sizeof(float));
 			rayUpdateMotion();
+			t += 0.08;
 		}
 		
 		GLuint texture = rayGetGLTexture();

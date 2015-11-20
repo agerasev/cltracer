@@ -72,13 +72,13 @@ void initGL()
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	
 	// Load, create and compile shaders
-	source_vert = __loadSource("gl/shader.vert");
+	source_vert = __loadSource("opengl_shaders/shader.vert");
 	shader_vert = glCreateShader(GL_VERTEX_SHADER);
 	glShaderSource(shader_vert, 1, (const GLchar**)&source_vert, NULL);
 	glCompileShader(shader_vert);
 	__printShaderCompilationErrors(shader_vert,"shader.vert");
 	__freeSource(source_vert);
-	source_frag = __loadSource("gl/shader.frag");
+	source_frag = __loadSource("opengl_shaders/shader.frag");
 	shader_frag = glCreateShader(GL_FRAGMENT_SHADER);
 	glShaderSource(shader_frag, 1, (const GLchar**)&source_frag, NULL);
 	glCompileShader(shader_frag);
