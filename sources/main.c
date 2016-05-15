@@ -328,6 +328,7 @@ int main(int argc, char *argv[])
 #endif // FIXED_SAMPLE_RATE
 		if(upd)
 		{
+#ifdef MOTION
 			shape_coord[2]  = sa[0]*sin(sf[0]*t) + sd;
 			shape_coord[5]  = sa[0]*sin(sf[1]*t) + sd;
 			shape_coord[8]  = sa[0]*sin(sf[2]*t) + sd;
@@ -335,6 +336,7 @@ int main(int argc, char *argv[])
 			shape_coord[14] = sa[1]*sin(sf[4]*t) + sd;
 			shape_coord[17] = sa[1]*sin(sf[5]*t) + sd;
 			rayLoadGeometry(shape_coord, 6*3*sizeof(float));
+#endif
 			rayUpdateMotion();
 			t += 0.08;
 		}

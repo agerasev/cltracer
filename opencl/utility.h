@@ -1,6 +1,6 @@
 #pragma once
 
-#include "opencl.h"
+#include <opencl.h>
 
 float __OVERLOADABLE__ _max(float a, float b)
 {

@@ -1,12 +1,12 @@
 #pragma once
 
-#include "opencl.h"
+#include <opencl.h>
 
-#include "ray.h"
-#include "hit.h"
-#include "hit_info.h"
+#include "def/ray.h"
+#include "def/hit.h"
+#include "def/hit_info.h"
 #include "random.h"
-#include "material.h"
+#include "def/material.h"
 #include "color.h"
 
 #define DELTA 1e-6f

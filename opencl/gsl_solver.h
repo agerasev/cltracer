@@ -181,7 +181,7 @@ gsl_poly_solve_cubic (float a, float b, float c,
   else
     {
       float sgnR = (R >= 0 ? 1 : -1);
-      float A = -sgnR * pow (fabs (R) + sqrt (R2 - Q3), 1.0/3.0);
+      float A = -sgnR * pow ((float) (fabs (R) + sqrt (R2 - Q3)), (float) (1.0/3.0));
       float B = Q / A ;
       *x0 = A + B - a / 3;
       return 1;
@@ -356,7 +356,7 @@ gsl_poly_solve_quartic (float a, float b, float c, float d,
 	    float sgnR = (R >= 0 ? 1 : -1);
 	    float modR = fabs (R);
 	    float sqrt_disc = sqrt (R2 - Q3);
-	    float A = -sgnR * pow (modR + sqrt_disc, 1.0 / 3.0);
+	    float A = -sgnR * pow ((float) (modR + sqrt_disc), (float) (1.0 / 3.0));
 	    float B = Q / A;
 	    float mod_diffAB = fabs (A - B);
 

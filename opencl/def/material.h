@@ -1,5 +1,7 @@
 #pragma once
 
+#include <opencl.h>
+
 #define MAT_FSIZE   (13*sizeof(float))
 #define MAT_ISIZE   (1*sizeof(int))
 #define MAT_FOFFSET 0

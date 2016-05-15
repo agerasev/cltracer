@@ -1,4 +1,6 @@
 .
 submodules/libcl4u/include
-submodules/libcl4u/includer
-opencl/def
+submodules/libla
+submodules/libcl4u/c-includer/defs
+opencl/
+submodules/libcl4u/c-includer

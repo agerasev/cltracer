@@ -4,7 +4,7 @@
  * biquadric bezier surface analytically
  */
 
-#include "opencl.h"
+#include <opencl.h>
 
 #include "matrix.h"
 #include "gsl_solver.h"
@@ -29,7 +29,7 @@ float newton_step_quartic(float x, float a, float b, float c, float d)
 {
 	float fxs = ((4*x + 3*a)*x + 2*b)*x + c; // f'(x)
 	if(fxs == 0)
-		return 1e38;
+		return 0.0;
 	float fx = (((x + a)*x + b)*x + c)*x + d; // f(x)
 	return x - fx/fxs;
 }
@@ -38,7 +38,7 @@ float newton_step_cubic(float x, float b, float c, float d)
 {
 	float fxs = (3*x + 2*b)*x + c; // f'(x)
 	if(fxs == 0)
-		return 1e38;
+		return 0.0;
 	float fx = ((x + b)*x + c)*x + d; // f(x)
 	return x - fx/fxs;
 }
@@ -64,8 +64,6 @@ int intersect_surface(
   float *tp, float3 *cp, float3 *np
 )
 {
-/* TODO: eliminate osf by scaling surface */
-	
 	// get transformation
 	matrix3 m = get_zmat(dir);
 	

@@ -1,10 +1,12 @@
 #pragma once
 
-#include "opencl.h"
+#include <opencl.h>
 
-#include "ray.h"
-#include "hit.h"
-#include "hit_info.h"
+#include "def/ray.h"
+#include "def/hit.h"
+#include "def/hit_info.h"
+#include "def/index.h"
+
 #include "analysis.h"
 #include "utility.h"
 
@@ -35,8 +37,27 @@ int test_aabb(float *tp, const float3 p, const float3 d, const float3 lp, const 
 	return tmax >= 0 && tmin <= tmax;
 }
 
+int test_sphere(float *tp, float3 src, float3 dir, float3 pos, float rad) {
+	float3 rpos = pos - src;
+	float rad2 = rad*rad;
+	if(dot(rpos, rpos) < rad2) {
+		*tp = 0.0;
+		return 1;
+	}
+	float t = dot(rpos, dir);
+	if(t < 0.0)
+		return 0;
+	float3 mrad = t*dir - rpos;
+	float mrad2 = dot(mrad, mrad);
+	if(mrad2 < rad2) {
+		*tp = t - sqrt(rad2 - mrad2);
+		return 1;
+	}
+	return 0;
+}
+
 kernel void intersect(
-	global const float *shapes,
+	global const float *shapes, global const uchar *index,
 	global const uchar *ray_data, global uchar *hit_data,
 	global uchar *hit_info, const uint work_size
 )
@@ -63,20 +84,27 @@ kernel void intersect(
 	{
 		float t;
 		float3 n,c;
-		float3 lp,hp;
-		gen_aabb(&lp,&hp,shapes+3*6*i,6);
-		if(test_aabb(&t,ray.pos,ray.dir,lp,hp))
+		
+		Index idx = index_load(i, index);
+		
+		if(test_sphere(&t,ray.pos,ray.dir,idx.pos,idx.rad))
 		{
-			if(intersect_surface(shapes+3*6*i,ray.source==i+1,ray.pos,ray.dir,&t,&c,&n))
-			{
-				if(hit_obj == 0 || t < mt)
-				{
-					mt = t;
-					hit_pos = ray.pos + ray.dir*t;
-					hit_obj = i + 1;
-					hit_norm = n;
-				}
+			if(idx.type == OBJECT_TYPE_SPHERE) {
+				c = ray.pos + t*ray.dir;
+				n = (c - idx.pos)/idx.rad;
+			} else if(OBJECT_TYPE_SURFACE) {
+				if(!intersect_surface(shapes+idx.ptr,ray.source==i+1,ray.pos,ray.dir,&t,&c,&n))
+					continue;
 			}
+		} else
+			continue;
+		
+		if(hit_obj == 0 || t < mt)
+		{
+			mt = t;
+			hit_pos = ray.pos + ray.dir*t;
+			hit_obj = i + 1;
+			hit_norm = n;
 		}
 	}
 	

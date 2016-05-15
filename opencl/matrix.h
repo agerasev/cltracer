@@ -1,6 +1,6 @@
 #pragma once
 
-#include "opencl.h"
+#include <opencl.h>
 
 typedef struct
 {

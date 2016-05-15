@@ -1,6 +1,6 @@
 #pragma once
 
-#include "opencl.h"
+#include <opencl.h>
 
 #define CAM_SIZE (27*sizeof(float))
 

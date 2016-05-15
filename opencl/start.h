@@ -1,10 +1,10 @@
 #pragma once
 
-#include "opencl.h"
+#include <opencl.h>
 
-#include "ray.h"
+#include "def/ray.h"
 #include "random.h"
-#include "camera.h"
+#include "def/camera.h"
 
 kernel void start(global uchar *ray_data, constant uchar *cam_data, global uint *random)
 {
